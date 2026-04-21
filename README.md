@@ -56,8 +56,8 @@ Deeper references: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for module map
 ## Install
 
 ```bash
-git clone https://github.com/amerkld/Cairn.git
-cd Cairn
+git clone https://github.com/amerkld/cairn.git
+cd cairn
 pnpm install
 ```
 
