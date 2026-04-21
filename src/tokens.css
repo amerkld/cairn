@@ -1,0 +1,40 @@
+/*
+ * Cairn design tokens — single source of truth for color, radii, motion.
+ * Dark-first. Accent (#fac775) is used sparingly; see docs/DESIGN.md.
+ *
+ * HSL format so Tailwind's <alpha-value> syntax works (see tailwind.config.ts).
+ */
+
+:root {
+  /* Surfaces — near-black neutrals with subtle warmth to harmonize with #fac775 */
+  --bg-base: 220 10% 6%;
+  --bg-surface: 220 9% 9%;
+  --bg-elevated: 220 8% 12%;
+  --bg-overlay: 220 10% 4%;
+
+  /* Foreground — tuned for restfulness, not harsh white */
+  --fg-primary: 220 15% 94%;
+  --fg-secondary: 220 8% 70%;
+  --fg-muted: 220 6% 52%;
+  --fg-on-accent: 30 30% 10%;
+
+  /* Borders — thin, subtle. Strong variant only on focus or active */
+  --border-subtle: 220 8% 17%;
+  --border-strong: 220 10% 26%;
+
+  /* Accent — #fac775 is HSL(37 92% 72%). Muted variant for chips / low-emphasis */
+  --accent: 37 92% 72%;
+  --accent-muted: 37 60% 30%;
+
+  /* State */
+  --danger: 358 70% 60%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+  }
+}

@@ -1,0 +1,63 @@
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+
+@import "./tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Global focus ring — accent, never default browser blue */
+  :focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px hsl(var(--bg-base)), 0 0 0 4px hsl(var(--accent) / 0.55);
+    border-radius: 4px;
+  }
+
+  /* Scrollbar — minimal, unobtrusive */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border-subtle));
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--border-strong));
+    background-clip: content-box;
+  }
+}
+
+@layer components {
+  .app-title-bar {
+    -webkit-app-region: drag;
+  }
+  .app-title-bar button,
+  .app-title-bar [role="button"],
+  .app-title-bar input,
+  .app-title-bar a {
+    -webkit-app-region: no-drag;
+  }
+}

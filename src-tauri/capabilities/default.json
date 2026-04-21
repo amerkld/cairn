@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capabilities available to Cairn's frontend. Note: filesystem access is NOT granted here — all FS operations go through our own Rust commands in commands.rs so invariants (atomic writes, trash, .cairn ownership) cannot be bypassed.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "dialog:default",
+    "notification:default"
+  ]
+}
