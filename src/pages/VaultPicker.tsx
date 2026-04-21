@@ -6,6 +6,7 @@ import { Button } from "@/ds/Button";
 import { cn } from "@/lib/cn";
 import { useForgetVault, useOpenVault, useVaultsQuery } from "@/lib/queries";
 import type { VaultSummary } from "@/lib/invoke";
+import { CairnLogo } from "@/shell/CairnLogo";
 
 export function VaultPicker() {
   const vaultsQuery = useVaultsQuery();
@@ -28,7 +29,7 @@ export function VaultPicker() {
     <div className="flex h-full items-center justify-center bg-bg-base px-6 py-10">
       <div className="flex w-full max-w-lg flex-col gap-10">
         <header className="flex flex-col items-center gap-4 text-center">
-          <CairnMark />
+          <CairnLogo size={56} />
           <div className="flex flex-col gap-1">
             <h1 className="text-2xl font-semibold tracking-tight text-fg-primary">
               Welcome to Cairn
@@ -172,18 +173,3 @@ function extractMessage(error: unknown): string {
   return "Couldn't open that folder.";
 }
 
-function CairnMark() {
-  return (
-    <svg
-      width="44"
-      height="44"
-      viewBox="0 0 44 44"
-      aria-hidden="true"
-      className="text-accent"
-    >
-      <circle cx="22" cy="32" r="6.5" fill="currentColor" />
-      <circle cx="22" cy="20" r="5" fill="currentColor" opacity="0.72" />
-      <circle cx="22" cy="10" r="3.5" fill="currentColor" opacity="0.48" />
-    </svg>
-  );
-}

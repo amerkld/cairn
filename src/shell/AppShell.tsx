@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Sidebar } from "./Sidebar";
 import { RouteContext, type RouteState } from "./routing";
 import { ReminderToasts } from "./ReminderToasts";
+import { CairnLogo } from "./CairnLogo";
 import type { VaultSummary } from "@/lib/invoke";
 import { useVaultEventSubscriptions } from "@/lib/tauri-events";
 
@@ -35,28 +36,12 @@ function TitleBar({ vaultName }: { vaultName: string }) {
       aria-label="Application title bar"
     >
       <div className="flex items-center gap-2">
-        <CairnMark />
+        <CairnLogo size={14} />
         <span className="text-xs font-medium tracking-wide text-fg-secondary">Cairn</span>
         <span className="text-xs text-fg-muted">·</span>
         <span className="truncate text-xs text-fg-secondary">{vaultName}</span>
       </div>
       <div className="text-2xs uppercase tracking-wider text-fg-muted">Phase 1</div>
     </div>
-  );
-}
-
-function CairnMark() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-      className="text-accent"
-    >
-      <circle cx="8" cy="12" r="2.2" fill="currentColor" />
-      <circle cx="8" cy="7.5" r="1.7" fill="currentColor" opacity="0.75" />
-      <circle cx="8" cy="3.5" r="1.2" fill="currentColor" opacity="0.5" />
-    </svg>
   );
 }

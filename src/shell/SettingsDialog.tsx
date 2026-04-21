@@ -18,6 +18,7 @@ import {
 import { Button } from "@/ds/Button";
 import { cn } from "@/lib/cn";
 import type { VaultSummary } from "@/lib/invoke";
+import { CairnLogo } from "./CairnLogo";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -40,7 +41,7 @@ export function SettingsDialog({
       <DialogContent className="max-w-lg p-0">
         <DialogHeader className="border-b border-border-subtle px-5 pb-4 pt-5">
           <DialogTitle className="flex items-center gap-2">
-            <CairnMark />
+            <CairnLogo size={16} />
             Cairn
           </DialogTitle>
           <DialogDescription>
@@ -157,13 +158,4 @@ function Row({
   );
 }
 
-function CairnMark() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden className="text-accent">
-      <circle cx="8" cy="12" r="2.2" fill="currentColor" />
-      <circle cx="8" cy="7.5" r="1.7" fill="currentColor" opacity="0.75" />
-      <circle cx="8" cy="3.5" r="1.2" fill="currentColor" opacity="0.5" />
-    </svg>
-  );
-}
 
