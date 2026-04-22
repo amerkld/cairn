@@ -124,6 +124,20 @@ Transitions are short and deliberate.
 
 Sizes: `sm` (h-7), `md` (h-8, default), `lg` (h-10), `icon` (h-8 w-8).
 
+### Title bar & window chrome
+
+Cairn draws its own title bar; OS decorations are disabled cross-platform (`decorations: false` in `tauri.conf.json`). The bar is `h-9` (36px), `bg-surface` with a 1px `border-subtle` bottom.
+
+- **Left cluster** — logo + "Cairn" wordmark + `·` separator + vault name. Sits on the drag region; double-click toggles maximize, matching native behavior.
+- **Right cluster** — minimize / maximize-or-restore / close. Rendered by `WindowControls` as three raw `<button>` elements (not DS `Button`) so they sit flush to the top-right edge with no radius.
+  - Each button: `h-9 w-11`, icon only, `text-fg-secondary` default.
+  - Min / max hover: `bg-bg-elevated` + `text-fg-primary`.
+  - Close hover: `bg-danger` + `text-fg-primary` (white X on red, native convention).
+  - Icons from `lucide-react`: `Minus`, `Square` (or `Copy` when maximized, rendered as a restore glyph), `X`. Stroke width `1.5`, size `12–14`.
+  - `tabIndex={-1}` — chrome is never a tab stop.
+
+The drag region is set in `src/index.css` via `-webkit-app-region`; buttons inside `.app-title-bar` automatically opt out.
+
 ### Cards
 
 Rounded-lg, 1px `border-subtle`, `bg-surface`. Hover feedback only if the card is interactive; otherwise cards are static containers.
