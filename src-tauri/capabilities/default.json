@@ -11,6 +11,10 @@
     "core:window:allow-close",
     "core:window:allow-is-maximized",
     "dialog:default",
-    "notification:default"
+    "notification:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://x.com/*" }]
+    }
   ]
 }

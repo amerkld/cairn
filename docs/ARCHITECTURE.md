@@ -73,7 +73,7 @@ Rule: a module may not import a module from a column to its right without explic
 ```
 <Vault>/                     ← user-visible, git-friendly
   .cairn/                    ← app-owned, do not touch from UI
-    config.json
+    config.json              ← { name, tags, editorFullWidth }
     state.json
     reminders.json
     trash/
@@ -87,6 +87,8 @@ Rule: a module may not import a module from a column to its right without explic
       assets/                ← pasted images
       <user subdirs>/
 ```
+
+`config.json` carries vault metadata (`name`), tag color definitions (`tags`), and per-vault UI preferences (`editorFullWidth`). New preference keys append here — the field is read via `#[serde(default)]` so configs written before a field existed still deserialize without rewriting on load.
 
 **Invariants** (enforced by `vault::` and `fs::`, never bypassed):
 
@@ -137,6 +139,8 @@ Commands are declared in `src-tauri/src/commands.rs` and proxied from the fronte
 | `empty_trash`     | —                       | `number` (removed count) | permanently deletes everything in `.cairn/trash/` |
 | `list_trash`      | —                       | `TrashEntry[]`           | index entries, newest first |
 | `search_notes`    | `{ query, limit? }`     | `SearchHit[]`            | substring search over titles + bodies |
+| `get_editor_full_width` | —                 | `boolean`                | reads `editorFullWidth` from the active vault's `.cairn/config.json`; `false` on legacy configs missing the field |
+| `set_editor_full_width` | `{ value: bool }` | `void`                   | persists the editor layout preference into the active vault's config |
 | `set_tag` *(M7)*  | `{ path, tags: string[] }` | `void`                |               |
 | `trash_note` *(M8)*| `{ path }`              | `void`                   |               |
 | `restore_trash` *(M8)*| `{ path }`          | `void`                   | collision-renames on restore |

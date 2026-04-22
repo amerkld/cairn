@@ -1,13 +1,14 @@
 /**
- * Settings / About dialog. Phase 1 is intentionally lean: the app doesn't
- * have user-adjustable settings yet, so this is mostly an About surface
- * with the vault path (copy-able) and a pointer to the keyboard shortcuts.
+ * Settings / About dialog. Holds the vault's user-adjustable preferences
+ * (currently just editor layout) alongside the About surface with the
+ * vault path and a pointer to the keyboard shortcuts.
  *
- * When actual settings land (theme, default vault on launch, etc.), they
- * belong here — new sections above About, following the same layout.
+ * Preference rows use `SettingRow` (label + description + control),
+ * distinct from the info-only `Row` used by About/Vault sections.
  */
 import { useState, type ReactNode } from "react";
-import { Copy, Check, Keyboard } from "lucide-react";
+import { Copy, Check, Keyboard, ExternalLink } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +17,9 @@ import {
   DialogDescription,
 } from "@/ds/Dialog";
 import { Button } from "@/ds/Button";
+import { Switch } from "@/ds/Switch";
 import { cn } from "@/lib/cn";
+import { useEditorPreferences } from "@/lib/editor-preferences";
 import type { VaultSummary } from "@/lib/invoke";
 import { CairnLogo } from "./CairnLogo";
 
@@ -28,7 +31,8 @@ interface SettingsDialogProps {
 }
 
 const APP_VERSION = "0.1.0";
-const APP_PHASE = "Phase 1";
+const AUTHOR_NAME = "amer";
+const AUTHOR_URL = "https://x.com/amerkld";
 
 export function SettingsDialog({
   open,
@@ -55,9 +59,13 @@ export function SettingsDialog({
             <Row label="Path" value={vault.path} copyable mono />
           </Section>
 
+          <Section title="Editor">
+            <EditorFullWidthRow />
+          </Section>
+
           <Section title="About">
-            <Row label="Version" value={`${APP_VERSION} · ${APP_PHASE}`} />
-            <Row label="Spec" value="specs/SPEC_0.md" mono />
+            <Row label="Version" value={APP_VERSION} />
+            <AuthorRow />
           </Section>
 
           <Section title="Help">
@@ -96,6 +104,87 @@ function Section({
       </h3>
       <div className="flex flex-col gap-1">{children}</div>
     </section>
+  );
+}
+
+function SettingRow({
+  label,
+  description,
+  control,
+  htmlFor,
+}: {
+  label: string;
+  description?: string;
+  control: ReactNode;
+  /** When the control is a labellable element, ties the <label> to it. */
+  htmlFor?: string;
+}) {
+  return (
+    <div className="flex items-start gap-3 py-1.5">
+      <div className="min-w-0 flex-1">
+        <label
+          htmlFor={htmlFor}
+          className="block text-sm text-fg-primary"
+        >
+          {label}
+        </label>
+        {description ? (
+          <p className="mt-0.5 text-xs text-fg-muted">{description}</p>
+        ) : null}
+      </div>
+      <div className="shrink-0 pt-0.5">{control}</div>
+    </div>
+  );
+}
+
+function AuthorRow() {
+  return (
+    <div className="flex items-center gap-3 py-1.5">
+      <span className="w-20 shrink-0 text-2xs uppercase tracking-wider text-fg-muted">
+        Author
+      </span>
+      <button
+        type="button"
+        onClick={() => {
+          // Opens in the user's default browser via tauri-plugin-opener.
+          // Failure is intentionally ignored — the author row is cosmetic.
+          void openUrl(AUTHOR_URL).catch(() => undefined);
+        }}
+        className={cn(
+          "group inline-flex min-w-0 flex-1 items-center gap-1.5 text-left text-sm",
+          "text-fg-primary transition-colors duration-fast ease-swift",
+          "hover:text-accent focus-visible:outline-none focus-visible:text-accent",
+        )}
+        aria-label={`Open ${AUTHOR_NAME} on X (opens in browser)`}
+      >
+        <span className="truncate">{AUTHOR_NAME}</span>
+        <ExternalLink
+          className="h-3 w-3 shrink-0 text-fg-muted transition-colors duration-fast ease-swift group-hover:text-accent"
+          strokeWidth={1.75}
+        />
+      </button>
+    </div>
+  );
+}
+
+function EditorFullWidthRow() {
+  const { fullWidth, loading, setFullWidth } = useEditorPreferences();
+  return (
+    <SettingRow
+      label="Full-width editor"
+      description="Stretch notes from the sidebar to the window edge instead of a centered column."
+      control={
+        <Switch
+          aria-label="Full-width editor"
+          checked={fullWidth}
+          disabled={loading}
+          onCheckedChange={(next) => {
+            // Fire-and-forget: the context reverts on error.
+            void setFullWidth(next);
+          }}
+        />
+      }
+    />
   );
 }
 

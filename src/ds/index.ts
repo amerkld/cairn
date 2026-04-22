@@ -2,6 +2,7 @@ export { Button, buttonVariants, type ButtonProps } from "./Button";
 export { Card, CardHeader, CardTitle, CardContent } from "./Card";
 export { Badge, type BadgeProps } from "./Badge";
 export { Input, type InputProps } from "./Input";
+export { Switch, type SwitchProps } from "./Switch";
 export {
   DropdownMenu,
   DropdownMenuTrigger,

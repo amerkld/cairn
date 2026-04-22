@@ -8,6 +8,7 @@ import { Someday } from "./pages/Someday";
 import { TrashPage } from "./pages/Trash";
 import { VaultPicker } from "./pages/VaultPicker";
 import { useActiveVaultQuery } from "./lib/queries";
+import { EditorPreferencesProvider } from "./lib/editor-preferences";
 import type { RouteState } from "./shell/routing";
 
 export function App() {
@@ -22,14 +23,16 @@ export function App() {
   }
 
   return (
-    <AppShell vault={activeVault}>
-      {(state) => (
-        <>
-          <GlobalShortcuts />
-          <PageFor state={state} />
-        </>
-      )}
-    </AppShell>
+    <EditorPreferencesProvider>
+      <AppShell vault={activeVault}>
+        {(state) => (
+          <>
+            <GlobalShortcuts />
+            <PageFor state={state} />
+          </>
+        )}
+      </AppShell>
+    </EditorPreferencesProvider>
   );
 }
 

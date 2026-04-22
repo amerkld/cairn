@@ -88,6 +88,12 @@ Spacing follows the Tailwind default scale (4px increments). Radius:
 
 Avoid radius larger than 14px; Cairn is crisp, not bubbly.
 
+## Layout tokens
+
+| Token                 | Default   | Usage                                                     |
+|-----------------------|-----------|-----------------------------------------------------------|
+| `--editor-max-width`  | `48rem`   | Max width of the editor column (body + frontmatter title). Set to `100%` when `data-editor-width="full"` is on `:root`, flipped by the "Full-width editor" setting. |
+
 ## Elevation
 
 Shadows are subtle. The hierarchy is mostly conveyed through border + background contrast; shadows are reserved for overlays.
@@ -123,6 +129,15 @@ Transitions are short and deliberate.
 - **Danger** — outlined, reserved for destructive confirms.
 
 Sizes: `sm` (h-7), `md` (h-8, default), `lg` (h-10), `icon` (h-8 w-8).
+
+### Switch (`src/ds/Switch.tsx`)
+
+Two-state toggle for on/off preferences (e.g. the "Full-width editor" setting). `role="switch"` with `aria-checked`; click or Space/Enter toggles. Controlled via `checked` + `onCheckedChange` — the caller owns state.
+
+- Sizes: `sm` (h-4 w-7), `md` (h-5 w-9, default).
+- On: `bg-accent`. Off: `bg-elevated` with a `border-subtle` outline. Thumb is `fg-primary` with a subtle shadow.
+- Focus ring reuses the app's accent-colored `focus-visible` treatment.
+- Use inside `SettingRow` (label + description + control) in the Settings dialog.
 
 ### Title bar & window chrome
 
@@ -180,6 +195,7 @@ Skeletons, not spinners. Animated shimmer is off-limits; prefer a static placeho
 - Metadata bar at top: title field, tag chips (add/remove), deadline picker, actions
 - CodeMirror body below, padded
 - Save indicator in bottom-right (subtle; appears briefly on save)
+- Title and body share a single column whose width is driven by `--editor-max-width`. The "Full-width editor" preference (Settings dialog → Editor section) flips the token between `48rem` (centered readable column) and `100%` (edge-to-edge). The switch preserves undo history — it toggles the token, not the CodeMirror instance.
 
 ### Someday / Trash
 - Simple list view with per-row actions (Remind / Restore / Delete)
