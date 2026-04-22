@@ -6,12 +6,18 @@ import { mockIPC } from "@tauri-apps/api/mocks";
 import type { ReactNode } from "react";
 import { Captures } from "./Captures";
 import type { NoteRef, Tree } from "@/lib/invoke";
+import { RouteContext, type RouteApi } from "@/shell/routing";
 
-function wrap(children: ReactNode) {
+function wrap(children: ReactNode, navigate: RouteApi["navigate"] = () => {}) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  const route: RouteApi = { state: { page: "captures" }, navigate };
+  return (
+    <QueryClientProvider client={client}>
+      <RouteContext.Provider value={route}>{children}</RouteContext.Provider>
+    </QueryClientProvider>
+  );
 }
 
 const emptyTree = (): Tree => ({
@@ -39,7 +45,7 @@ const project = (overrides: Partial<import("@/lib/invoke").Project> = {}) => ({
 });
 
 describe("Captures page", () => {
-  it("shows empty state with 'Create your first capture' CTA when no captures", async () => {
+  it("shows empty state without an in-page CTA; only the header 'New capture' button remains", async () => {
     mockIPC((cmd) => {
       if (cmd === "list_tree") return emptyTree();
       throw new Error(`unexpected: ${cmd}`);
@@ -48,8 +54,12 @@ describe("Captures page", () => {
     render(wrap(<Captures />));
 
     expect(await screen.findByText("Captures is empty")).toBeInTheDocument();
+    // The in-page CTA has been removed — the header button is the only way to start a capture.
     expect(
-      screen.getByRole("button", { name: /Create your first capture/ }),
+      screen.queryByRole("button", { name: /Create your first capture/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^New capture$/ }),
     ).toBeInTheDocument();
   });
 
@@ -80,9 +90,10 @@ describe("Captures page", () => {
     expect(screen.getByText("2")).toBeInTheDocument();
   });
 
-  it("clicking 'New capture' calls create_capture and refetches the tree", async () => {
+  it("clicking 'New capture' in the header calls create_capture, refetches the tree, and opens the new note", async () => {
     let listCalls = 0;
     const creates: Array<Record<string, unknown>> = [];
+    const navigations: Array<{ page: string; notePath?: string }> = [];
 
     mockIPC((cmd, args) => {
       if (cmd === "list_tree") {
@@ -96,19 +107,30 @@ describe("Captures page", () => {
       throw new Error(`unexpected: ${cmd}`);
     });
 
-    render(wrap(<Captures />));
+    render(
+      wrap(<Captures />, (next) => {
+        navigations.push(
+          next.page === "editor"
+            ? { page: next.page, notePath: next.notePath }
+            : { page: next.page },
+        );
+      }),
+    );
 
-    // Wait for initial fetch to settle so the CTA is visible.
+    // Wait for initial fetch to settle so the empty state is visible.
     await screen.findByText("Captures is empty");
     const initialCalls = listCalls;
 
-    const button = await screen.findByRole("button", {
-      name: /Create your first capture/,
-    });
+    const button = await screen.findByRole("button", { name: /^New capture$/ });
     await userEvent.setup().click(button);
 
     await waitFor(() => expect(creates).toHaveLength(1));
     await waitFor(() => expect(listCalls).toBeGreaterThan(initialCalls));
+    await waitFor(() =>
+      expect(navigations).toEqual([
+        { page: "editor", notePath: "/v/Captures/new.md" },
+      ]),
+    );
   });
 
   it("Move to Someday menu item calls move_note with target 'someday'", async () => {

@@ -68,7 +68,7 @@ export function Captures() {
         {tree.isLoading ? (
           <LoadingGrid />
         ) : captures.length === 0 ? (
-          <EmptyState onNew={() => createCapture.mutate(undefined)} />
+          <EmptyState />
         ) : visibleCaptures.length === 0 ? (
           <FilteredEmpty tagLabel={tagFilter ?? ""} onClear={() => setTagFilter(null)} />
         ) : (
@@ -280,7 +280,7 @@ function LoadingGrid() {
   );
 }
 
-function EmptyState({ onNew }: { onNew: () => void }) {
+function EmptyState() {
   return (
     <div className="mx-auto flex max-w-md flex-col items-center gap-5 py-20 text-center">
       <div className="flex h-14 w-14 items-center justify-center rounded-full border border-border-subtle bg-bg-surface">
@@ -293,10 +293,6 @@ function EmptyState({ onNew }: { onNew: () => void }) {
           you can file it into a project, park it in Someday, or let it sit.
         </p>
       </div>
-      <Button variant="primary" size="md" onClick={onNew} className="gap-2">
-        <Plus className="h-4 w-4" strokeWidth={1.75} />
-        Create your first capture
-      </Button>
       <p className="text-2xs uppercase tracking-wider text-fg-muted">
         Tip · <kbd className="font-mono">Ctrl</kbd>+<kbd className="font-mono">N</kbd> from anywhere
       </p>
