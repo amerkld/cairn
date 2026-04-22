@@ -42,6 +42,10 @@ The filesystem is canonical. The frontend never holds notes exclusively in memor
 └────────────────────────── OS filesystem ──────────────────────────┘
 ```
 
+## Window chrome
+
+OS decorations are disabled (`decorations: false` in `src-tauri/tauri.conf.json`), and the frontend draws its own title bar in `src/shell/TitleBar.tsx` with minimize/maximize/close rendered by `src/shell/WindowControls.tsx`. Window controls use the built-in Tauri window API directly (`@tauri-apps/api/window` → `getCurrentWindow()`), not a Cairn IPC command. The granted capabilities in `src-tauri/capabilities/default.json` are `core:window:allow-start-dragging`, `allow-minimize`, `allow-toggle-maximize`, `allow-close`, `allow-is-maximized`.
+
 ## Module boundaries
 
 Each module is a compilation unit with a single responsibility and a narrow public surface.
