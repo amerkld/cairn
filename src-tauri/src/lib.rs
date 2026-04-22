@@ -49,6 +49,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let data_dir = app
                 .path()
@@ -106,6 +107,8 @@ pub fn run() {
             commands::complete_action,
             commands::list_home_actions,
             commands::reorder_actions,
+            commands::get_editor_full_width,
+            commands::set_editor_full_width,
             commands::list_folder,
             commands::set_remind_at,
             commands::list_reminders,

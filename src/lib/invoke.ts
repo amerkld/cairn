@@ -172,6 +172,10 @@ export const api = {
   setTagColor: (label: string, color: string | null) =>
     call<void>("set_tag_color", { label, color }),
 
+  getEditorFullWidth: () => call<boolean>("get_editor_full_width"),
+  setEditorFullWidth: (value: boolean) =>
+    call<void>("set_editor_full_width", { value }),
+
   trashNote: (path: string) => call<string>("trash_note", { path }),
   restoreTrash: (trashedPath: string) =>
     call<string>("restore_trash", { trashedPath }),

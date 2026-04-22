@@ -23,26 +23,34 @@ export function FrontmatterBar({
   showDeadline,
 }: FrontmatterBarProps) {
   return (
-    <div className="flex flex-col gap-3 border-b border-border-subtle bg-bg-surface/60 px-10 py-4">
-      <TitleField
-        value={frontmatter.title ?? ""}
-        onChange={(title) => onChange({ ...frontmatter, title: title || null })}
-      />
-      <div className="flex flex-wrap items-center gap-3">
-        <TagsField
-          tags={frontmatter.tags ?? []}
-          onChange={(tags) =>
-            onChange({ ...frontmatter, tags: tags.length > 0 ? tags : [] })
-          }
+    <div className="border-b border-border-subtle bg-bg-surface/60 px-10 py-4">
+      {/* Inner wrapper mirrors the editor body's max-width so title and body
+          columns stay visually aligned. The `--editor-max-width` token flips
+          between a readable column and 100% based on the user's preference. */}
+      <div
+        className="mx-auto flex flex-col gap-3"
+        style={{ maxWidth: "var(--editor-max-width)" }}
+      >
+        <TitleField
+          value={frontmatter.title ?? ""}
+          onChange={(title) => onChange({ ...frontmatter, title: title || null })}
         />
-        {showDeadline ? (
-          <DeadlineField
-            value={frontmatter.deadline ?? null}
-            onChange={(deadline) =>
-              onChange({ ...frontmatter, deadline: deadline || null })
+        <div className="flex flex-wrap items-center gap-3">
+          <TagsField
+            tags={frontmatter.tags ?? []}
+            onChange={(tags) =>
+              onChange({ ...frontmatter, tags: tags.length > 0 ? tags : [] })
             }
           />
-        ) : null}
+          {showDeadline ? (
+            <DeadlineField
+              value={frontmatter.deadline ?? null}
+              onChange={(deadline) =>
+                onChange({ ...frontmatter, deadline: deadline || null })
+              }
+            />
+          ) : null}
+        </div>
       </div>
     </div>
   );

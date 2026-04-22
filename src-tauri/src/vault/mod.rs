@@ -36,6 +36,13 @@ pub struct VaultConfig {
     pub name: String,
     #[serde(default)]
     pub tags: Vec<TagDef>,
+    /// Editor width preference. `false` (default) keeps the note body in a
+    /// centered readable column; `true` stretches it edge-to-edge.
+    ///
+    /// `#[serde(default)]` so configs written before this field existed still
+    /// deserialize without rewriting the file on load.
+    #[serde(default, rename = "editorFullWidth")]
+    pub editor_full_width: bool,
 }
 
 /// A tag definition stored in `.cairn/config.json`.
@@ -104,6 +111,7 @@ fn bootstrap_with_name(path: &Path, name: &str) -> AppResult<()> {
         let config = VaultConfig {
             name: name.to_string(),
             tags: Vec::new(),
+            editor_full_width: false,
         };
         write_json(&config_path, &config)?;
     }
@@ -173,6 +181,21 @@ pub fn save_config(vault_root: &Path, config: &VaultConfig) -> AppResult<()> {
     write_json(&path, config)
 }
 
+/// Read the editor-full-width preference from a vault's config, returning
+/// `false` when the field or config file is missing.
+pub fn get_editor_full_width(vault_root: &Path) -> AppResult<bool> {
+    Ok(load_config(vault_root)?.editor_full_width)
+}
+
+/// Persist a new editor-full-width preference into a vault's config. Loads,
+/// mutates the single field, and writes back — other config keys (name, tag
+/// colors, future prefs) are preserved.
+pub fn set_editor_full_width(vault_root: &Path, value: bool) -> AppResult<()> {
+    let mut config = load_config(vault_root)?;
+    config.editor_full_width = value;
+    save_config(vault_root, &config)
+}
+
 /// Write `bytes` to `path` via a temp-file-and-rename so the destination is
 /// never left in a half-written state on crash.
 fn atomic_write(path: &Path, bytes: &[u8]) -> AppResult<()> {
@@ -230,6 +253,7 @@ mod tests {
                 label: "work".into(),
                 color: Some("#fac775".into()),
             }],
+            editor_full_width: false,
         };
         write_json(&config_path, &edited).unwrap();
 
@@ -282,5 +306,80 @@ mod tests {
         atomic_write(&target, b"{}").unwrap();
         assert!(target.exists());
         assert!(!target.with_extension("tmp").exists());
+    }
+
+    #[test]
+    fn editor_full_width_defaults_to_false_on_fresh_vault() {
+        let dir = TempDir::new().unwrap();
+        open(dir.path()).unwrap();
+        assert!(!get_editor_full_width(dir.path()).unwrap());
+    }
+
+    #[test]
+    fn editor_full_width_deserializes_legacy_config_without_field() {
+        // A config written before the preference existed — no editorFullWidth key.
+        let dir = TempDir::new().unwrap();
+        fs::create_dir_all(dir.path().join(CAIRN_DIR)).unwrap();
+        let config_path = dir.path().join(CAIRN_DIR).join(CONFIG_FILE);
+        fs::write(
+            &config_path,
+            br#"{ "name": "Legacy", "tags": [] }"#,
+        )
+        .unwrap();
+
+        let loaded = load_config(dir.path()).unwrap();
+        assert_eq!(loaded.name, "Legacy");
+        assert!(!loaded.editor_full_width);
+    }
+
+    #[test]
+    fn set_editor_full_width_round_trips() {
+        let dir = TempDir::new().unwrap();
+        open(dir.path()).unwrap();
+
+        set_editor_full_width(dir.path(), true).unwrap();
+        assert!(get_editor_full_width(dir.path()).unwrap());
+
+        set_editor_full_width(dir.path(), false).unwrap();
+        assert!(!get_editor_full_width(dir.path()).unwrap());
+    }
+
+    #[test]
+    fn set_editor_full_width_preserves_other_config_fields() {
+        let dir = TempDir::new().unwrap();
+        open(dir.path()).unwrap();
+        let config_path = dir.path().join(CAIRN_DIR).join(CONFIG_FILE);
+
+        let edited = VaultConfig {
+            name: "My Brain".to_string(),
+            tags: vec![TagDef {
+                label: "work".into(),
+                color: Some("#fac775".into()),
+            }],
+            editor_full_width: false,
+        };
+        write_json(&config_path, &edited).unwrap();
+
+        set_editor_full_width(dir.path(), true).unwrap();
+
+        let reloaded = load_config(dir.path()).unwrap();
+        assert_eq!(reloaded.name, "My Brain");
+        assert_eq!(reloaded.tags.len(), 1);
+        assert_eq!(reloaded.tags[0].label, "work");
+        assert!(reloaded.editor_full_width);
+    }
+
+    #[test]
+    fn vault_config_serializes_editor_full_width_as_camel_case() {
+        let config = VaultConfig {
+            name: "x".into(),
+            tags: Vec::new(),
+            editor_full_width: true,
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(
+            json.contains("\"editorFullWidth\":true"),
+            "expected camelCase serde rename, got: {json}",
+        );
     }
 }

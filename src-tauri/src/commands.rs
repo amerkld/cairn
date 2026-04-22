@@ -415,6 +415,23 @@ pub fn reorder_actions(
     vault_state::set_action_order(&root, order)
 }
 
+// ─── editor preferences ─────────────────────────────────────────────────
+
+/// Read the active vault's editor-full-width preference. Returns `false`
+/// when the vault predates this setting (legacy configs).
+#[tauri::command]
+pub fn get_editor_full_width(state: State<'_, AppState>) -> AppResult<bool> {
+    let root = active_vault_path(&state)?;
+    vault::get_editor_full_width(&root)
+}
+
+/// Persist the editor-full-width preference into the active vault's config.
+#[tauri::command]
+pub fn set_editor_full_width(state: State<'_, AppState>, value: bool) -> AppResult<()> {
+    let root = active_vault_path(&state)?;
+    vault::set_editor_full_width(&root, value)
+}
+
 fn assert_inside(vault_root: &PathBuf, p: &PathBuf) -> AppResult<()> {
     // Cheap string-based containment check. A full canonicalization happens
     // inside fs:: for operations that actually write; this just short-circuits

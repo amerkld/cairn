@@ -28,6 +28,16 @@
 
   /* State */
   --danger: 358 70% 60%;
+
+  /* Layout — editor column width. Flipped at runtime via the
+   * `data-editor-width` attribute below when the user enables full-width mode. */
+  --editor-max-width: 48rem;
+}
+
+/* When the "Full-width editor" preference is on, widen the editor column
+ * to its container. The attribute is toggled by editor-preferences.tsx. */
+:root[data-editor-width="full"] {
+  --editor-max-width: 100%;
 }
 
 @media (prefers-reduced-motion: reduce) {

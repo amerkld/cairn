@@ -25,7 +25,10 @@ const cairnTheme = EditorView.theme(
     ".cm-content": {
       padding: "1.25rem 0",
       caretColor: "hsl(var(--accent))",
-      maxWidth: "48rem",
+      // Max width is driven by a CSS custom property so toggling the
+      // "Full-width editor" preference re-flows the editor without rebuilding
+      // the CodeMirror theme (and losing undo history).
+      maxWidth: "var(--editor-max-width)",
       margin: "0 auto",
     },
     ".cm-line": {

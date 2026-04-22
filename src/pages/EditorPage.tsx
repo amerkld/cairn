@@ -224,16 +224,24 @@ function LoadingState() {
       aria-label="Loading note"
       className="flex min-h-0 flex-1 flex-col"
     >
-      {/* Metadata bar placeholder */}
+      {/* Metadata bar placeholder — matches FrontmatterBar's inner column. */}
       <div className="border-b border-border-subtle bg-bg-surface/60 px-10 py-4">
-        <div className="h-7 w-1/2 animate-pulse rounded bg-bg-elevated" />
-        <div className="mt-3 flex items-center gap-2">
-          <div className="h-4 w-16 animate-pulse rounded bg-bg-elevated" />
-          <div className="h-4 w-20 animate-pulse rounded bg-bg-elevated" />
+        <div
+          className="mx-auto"
+          style={{ maxWidth: "var(--editor-max-width)" }}
+        >
+          <div className="h-7 w-1/2 animate-pulse rounded bg-bg-elevated" />
+          <div className="mt-3 flex items-center gap-2">
+            <div className="h-4 w-16 animate-pulse rounded bg-bg-elevated" />
+            <div className="h-4 w-20 animate-pulse rounded bg-bg-elevated" />
+          </div>
         </div>
       </div>
-      {/* Body placeholder — a stack of varying-width lines */}
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-10 py-8">
+      {/* Body placeholder — a stack of varying-width lines. */}
+      <div
+        className="mx-auto flex w-full flex-col gap-3 px-6 py-8"
+        style={{ maxWidth: "var(--editor-max-width)" }}
+      >
         {[92, 78, 88, 68, 84, 70].map((w, i) => (
           <div
             key={i}
