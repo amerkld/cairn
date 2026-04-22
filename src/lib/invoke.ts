@@ -43,6 +43,8 @@ export interface TrashEntry {
   trashedPath: string;
   title: string;
   deletedAt: string;
+  /** `"note"` for single files, `"project"` for whole folders. */
+  kind?: "note" | "project";
 }
 
 export interface SearchHit {
@@ -146,6 +148,9 @@ export const api = {
     call<string>("paste_image", { notePath, ext, bytes }),
 
   createProject: (name: string) => call<string>("create_project", { name }),
+  renameProject: (oldPath: string, newName: string) =>
+    call<string>("rename_project", { oldPath, newName }),
+  deleteProject: (path: string) => call<void>("delete_project", { path }),
   createAction: (projectPath: string, body?: string) =>
     call<NoteRef>(
       "create_action",

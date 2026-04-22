@@ -185,6 +185,119 @@ fn sanitize_project_name(name: &str) -> String {
         .to_string()
 }
 
+/// Rename a project folder. Sanitizes `new_name`, errors if another project
+/// already claims that name, then atomically moves the directory and rewrites
+/// path prefixes anywhere the old path was recorded (reminder index,
+/// Home action order in `.cairn/state.json`).
+///
+/// Does **not** touch the frontmatter of notes inside the project — markdown
+/// files don't record their own path, so the rename is purely a directory
+/// move plus bookkeeping. Returns the new absolute project path.
+pub fn rename_project(
+    vault_root: &Path,
+    old_path: &Path,
+    new_name: &str,
+) -> AppResult<PathBuf> {
+    assert_inside_vault(vault_root, old_path)?;
+    if !old_path.is_dir() {
+        return Err(AppError::PathNotFound(old_path.to_path_buf()));
+    }
+
+    let sanitized = sanitize_project_name(new_name);
+    if sanitized.is_empty() {
+        return Err(AppError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "project name cannot be empty",
+        )));
+    }
+
+    let projects_root = vault_root.join(crate::vault::PROJECTS_DIR);
+    let new_path = projects_root.join(&sanitized);
+
+    // If the new path is the same as the old, nothing to do.
+    if new_path == old_path {
+        return Ok(new_path);
+    }
+
+    if new_path.exists() {
+        return Err(AppError::VaultAlreadyExists(new_path));
+    }
+
+    fs::rename(old_path, &new_path)?;
+    rewrite_project_path_prefix(vault_root, old_path, &new_path)?;
+
+    Ok(new_path)
+}
+
+/// Soft-delete a project folder by moving the whole tree into `.cairn/trash/`
+/// as a single entry. Also purges any reminder-index or action-order entries
+/// that pointed into the project so the scheduler and Home dashboard don't
+/// try to surface actions that now live under `.cairn/trash/`.
+///
+/// On restore (via `trash::restore`), a reminder rebuild re-scans the notes
+/// and picks up their `remind_at` frontmatter again automatically.
+pub fn soft_delete_project(vault_root: &Path, path: &Path) -> AppResult<()> {
+    assert_inside_vault(vault_root, path)?;
+    if !path.is_dir() {
+        return Err(AppError::PathNotFound(path.to_path_buf()));
+    }
+
+    // Drop stale references *before* the move so, if the move fails, we
+    // don't leave pruned indices pointing to a live project.
+    let mut reminders = crate::reminders::load_index(vault_root)?;
+    let before_reminders = reminders.len();
+    reminders.retain(|entry| !entry.path.starts_with(path));
+    if reminders.len() != before_reminders {
+        crate::reminders::save_index(vault_root, &reminders)?;
+    }
+
+    let mut state = crate::state::load(vault_root)?;
+    let before_state = state.action_order.len();
+    state.action_order.retain(|p| !Path::new(p).starts_with(path));
+    if state.action_order.len() != before_state {
+        crate::state::save(vault_root, &state)?;
+    }
+
+    crate::trash::move_to_trash(vault_root, path)?;
+    Ok(())
+}
+
+/// Rewrite any stored reference to `old_path`'s prefix so it points at
+/// `new_path` instead. Touches the reminder index and the cross-project
+/// action order; both store paths as absolute paths the UI can round-trip.
+fn rewrite_project_path_prefix(
+    vault_root: &Path,
+    old_path: &Path,
+    new_path: &Path,
+) -> AppResult<()> {
+    let mut reminders = crate::reminders::load_index(vault_root)?;
+    let mut reminders_dirty = false;
+    for entry in reminders.iter_mut() {
+        if let Ok(suffix) = entry.path.strip_prefix(old_path) {
+            entry.path = new_path.join(suffix);
+            reminders_dirty = true;
+        }
+    }
+    if reminders_dirty {
+        crate::reminders::save_index(vault_root, &reminders)?;
+    }
+
+    let mut state = crate::state::load(vault_root)?;
+    let mut state_dirty = false;
+    for stored in state.action_order.iter_mut() {
+        let as_path = Path::new(stored);
+        if let Ok(suffix) = as_path.strip_prefix(old_path) {
+            *stored = new_path.join(suffix).to_string_lossy().to_string();
+            state_dirty = true;
+        }
+    }
+    if state_dirty {
+        crate::state::save(vault_root, &state)?;
+    }
+
+    Ok(())
+}
+
 /// Create a new action note under `project/Actions/` with id + created_at
 /// frontmatter. Like `create_note` but sets `status: open` since actions
 /// carry GTD state from the moment they exist.
@@ -947,5 +1060,256 @@ mod tests {
         let reread = read_note(&path).unwrap();
         assert_eq!(reread.frontmatter.title.as_deref(), Some("T"));
         assert!(reread.frontmatter.extra.contains_key("weird"));
+    }
+
+    // ─── rename_project ──────────────────────────────────────────────────
+
+    #[test]
+    fn rename_project_moves_directory_and_preserves_note_contents() {
+        let (_vault, root) = setup_vault();
+        let project = create_project(&root, "Alpha").unwrap();
+        let action = create_action(&project, Some("first step")).unwrap();
+        let original = fs::read_to_string(&action.path).unwrap();
+
+        let new_path = rename_project(&root, &project, "Beta").unwrap();
+
+        assert!(!project.exists());
+        assert!(new_path.is_dir());
+        assert_eq!(new_path.file_name().and_then(|s| s.to_str()), Some("Beta"));
+        // The action moved with the folder — same filename, new parent.
+        let moved_action = new_path
+            .join(ACTIONS_DIR)
+            .join(action.path.file_name().unwrap());
+        assert!(moved_action.exists());
+        // Contents are byte-identical.
+        assert_eq!(fs::read_to_string(&moved_action).unwrap(), original);
+    }
+
+    #[test]
+    fn rename_project_rejects_collision_with_existing_project() {
+        let (_vault, root) = setup_vault();
+        let a = create_project(&root, "A").unwrap();
+        create_project(&root, "B").unwrap();
+
+        let err = rename_project(&root, &a, "B").unwrap_err();
+        assert!(matches!(err, AppError::VaultAlreadyExists(_)));
+        // Old path still present — we don't leave a half-moved project.
+        assert!(a.exists());
+    }
+
+    #[test]
+    fn rename_project_rejects_missing_source() {
+        let (_vault, root) = setup_vault();
+        let ghost = root.join(PROJECTS_DIR).join("Ghost");
+        let err = rename_project(&root, &ghost, "Anything").unwrap_err();
+        assert!(matches!(err, AppError::PathNotFound(_)));
+    }
+
+    #[test]
+    fn rename_project_rejects_empty_name() {
+        let (_vault, root) = setup_vault();
+        let p = create_project(&root, "Alpha").unwrap();
+        let err = rename_project(&root, &p, "   ").unwrap_err();
+        assert!(matches!(err, AppError::Io(_)));
+    }
+
+    #[test]
+    fn rename_project_sanitizes_name_containing_path_separators() {
+        let (_vault, root) = setup_vault();
+        let p = create_project(&root, "Alpha").unwrap();
+        let new_path = rename_project(&root, &p, "Al/pha/2").unwrap();
+        // Separator chars are stripped, so the folder is a single-level name.
+        assert_eq!(
+            new_path.file_name().and_then(|s| s.to_str()),
+            Some("Alpha2"),
+        );
+        assert_eq!(new_path.parent(), Some(root.join(PROJECTS_DIR).as_path()));
+    }
+
+    #[test]
+    fn rename_project_rewrites_reminder_index_paths() {
+        let (_vault, root) = setup_vault();
+        let project = create_project(&root, "Alpha").unwrap();
+        let action_path = project.join(ACTIONS_DIR).join("a.md");
+        fs::write(
+            &action_path,
+            "---\ntitle: A\nremind_at: 2026-06-01T09:00:00Z\n---\n",
+        )
+        .unwrap();
+        // Seed the reminders index directly so the test doesn't depend on
+        // the scheduler.
+        crate::reminders::save_index(
+            &root,
+            &[crate::reminders::Entry {
+                path: action_path.clone(),
+                title: "A".into(),
+                remind_at: chrono::TimeZone::with_ymd_and_hms(
+                    &Utc,
+                    2026, 6, 1, 9, 0, 0,
+                )
+                .unwrap(),
+            }],
+        )
+        .unwrap();
+
+        let new_project = rename_project(&root, &project, "Beta").unwrap();
+
+        let reloaded = crate::reminders::load_index(&root).unwrap();
+        assert_eq!(reloaded.len(), 1);
+        assert_eq!(
+            reloaded[0].path,
+            new_project.join(ACTIONS_DIR).join("a.md"),
+        );
+    }
+
+    #[test]
+    fn rename_project_rewrites_action_order_paths() {
+        let (_vault, root) = setup_vault();
+        let project = create_project(&root, "Alpha").unwrap();
+        let action_path = project.join(ACTIONS_DIR).join("a.md");
+        fs::write(&action_path, "").unwrap();
+
+        let unrelated = root.join(CAPTURES_DIR).join("c.md");
+        let original_order = vec![
+            action_path.to_string_lossy().to_string(),
+            unrelated.to_string_lossy().to_string(),
+        ];
+        crate::state::set_action_order(&root, original_order).unwrap();
+
+        let new_project = rename_project(&root, &project, "Beta").unwrap();
+
+        let reloaded = crate::state::load(&root).unwrap();
+        assert_eq!(reloaded.action_order.len(), 2);
+        // First path was rewritten; unrelated path is untouched.
+        assert_eq!(
+            reloaded.action_order[0],
+            new_project
+                .join(ACTIONS_DIR)
+                .join("a.md")
+                .to_string_lossy()
+                .to_string(),
+        );
+        assert_eq!(
+            reloaded.action_order[1],
+            unrelated.to_string_lossy().to_string(),
+        );
+    }
+
+    #[test]
+    fn rename_project_preserves_unknown_frontmatter_keys() {
+        // Regression guard for the CLAUDE.md invariant: renaming a project
+        // must not touch the frontmatter of notes inside it.
+        let (_vault, root) = setup_vault();
+        let project = create_project(&root, "Alpha").unwrap();
+        let note = project.join(ACTIONS_DIR).join("a.md");
+        let raw = "---\nid: abc\ntitle: A\nweird_key: preserved\n---\n\nbody\n";
+        fs::write(&note, raw).unwrap();
+
+        let new_project = rename_project(&root, &project, "Beta").unwrap();
+        let moved = new_project.join(ACTIONS_DIR).join("a.md");
+        assert_eq!(fs::read_to_string(&moved).unwrap(), raw);
+    }
+
+    // ─── soft_delete_project ─────────────────────────────────────────────
+
+    #[test]
+    fn soft_delete_project_moves_entire_folder_to_trash_as_one_entry() {
+        let (_vault, root) = setup_vault();
+        let project = create_project(&root, "Alpha").unwrap();
+        create_action(&project, Some("a1")).unwrap();
+        create_action(&project, Some("a2")).unwrap();
+        fs::write(project.join("doc.md"), "---\n---\n\ndoc").unwrap();
+
+        soft_delete_project(&root, &project).unwrap();
+
+        assert!(!project.exists());
+        let entries = crate::trash::list(&root).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].kind, crate::trash::EntryKind::Project);
+        assert_eq!(entries[0].title, "Alpha");
+    }
+
+    #[test]
+    fn soft_delete_project_purges_reminder_entries_for_project() {
+        let (_vault, root) = setup_vault();
+        let project = create_project(&root, "Alpha").unwrap();
+        let proj_action = project.join(ACTIONS_DIR).join("a.md");
+        fs::write(
+            &proj_action,
+            "---\nremind_at: 2026-06-01T09:00:00Z\n---\n",
+        )
+        .unwrap();
+        let unrelated = root.join(SOMEDAY_DIR).join("u.md");
+        fs::write(
+            &unrelated,
+            "---\nremind_at: 2026-07-01T09:00:00Z\n---\n",
+        )
+        .unwrap();
+
+        crate::reminders::save_index(
+            &root,
+            &[
+                crate::reminders::Entry {
+                    path: proj_action.clone(),
+                    title: "A".into(),
+                    remind_at: chrono::TimeZone::with_ymd_and_hms(
+                        &Utc,
+                        2026, 6, 1, 9, 0, 0,
+                    )
+                    .unwrap(),
+                },
+                crate::reminders::Entry {
+                    path: unrelated.clone(),
+                    title: "U".into(),
+                    remind_at: chrono::TimeZone::with_ymd_and_hms(
+                        &Utc,
+                        2026, 7, 1, 9, 0, 0,
+                    )
+                    .unwrap(),
+                },
+            ],
+        )
+        .unwrap();
+
+        soft_delete_project(&root, &project).unwrap();
+
+        let reloaded = crate::reminders::load_index(&root).unwrap();
+        assert_eq!(reloaded.len(), 1);
+        assert_eq!(reloaded[0].path, unrelated);
+    }
+
+    #[test]
+    fn soft_delete_project_purges_action_order_for_project() {
+        let (_vault, root) = setup_vault();
+        let project = create_project(&root, "Alpha").unwrap();
+        let action = project.join(ACTIONS_DIR).join("a.md");
+        fs::write(&action, "").unwrap();
+        let unrelated = root.join(CAPTURES_DIR).join("c.md");
+
+        crate::state::set_action_order(
+            &root,
+            vec![
+                action.to_string_lossy().to_string(),
+                unrelated.to_string_lossy().to_string(),
+            ],
+        )
+        .unwrap();
+
+        soft_delete_project(&root, &project).unwrap();
+
+        let reloaded = crate::state::load(&root).unwrap();
+        assert_eq!(reloaded.action_order.len(), 1);
+        assert_eq!(
+            reloaded.action_order[0],
+            unrelated.to_string_lossy().to_string(),
+        );
+    }
+
+    #[test]
+    fn soft_delete_project_rejects_missing_path() {
+        let (_vault, root) = setup_vault();
+        let ghost = root.join(PROJECTS_DIR).join("Ghost");
+        let err = soft_delete_project(&root, &ghost).unwrap_err();
+        assert!(matches!(err, AppError::PathNotFound(_)));
     }
 }

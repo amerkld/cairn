@@ -35,6 +35,9 @@ import { Button } from "@/ds/Button";
 import { Input } from "@/ds/Input";
 import { SettingsDialog } from "./SettingsDialog";
 import { ShortcutsSheet } from "./ShortcutsSheet";
+import { ProjectRowMenu } from "./ProjectRowMenu";
+import { RenameProjectDialog } from "./RenameProjectDialog";
+import { DeleteProjectDialog } from "./DeleteProjectDialog";
 import { cn } from "@/lib/cn";
 import type { Project, VaultSummary } from "@/lib/invoke";
 import {
@@ -174,6 +177,8 @@ function ProjectList({
   const route = useRoute();
   const activePath =
     route.state.page === "project" ? route.state.projectPath : undefined;
+  const [renameTarget, setRenameTarget] = useState<Project | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
 
   if (loading) {
     return (
@@ -196,39 +201,99 @@ function ProjectList({
   }
 
   return (
-    <ul className="flex flex-col gap-0.5 px-2">
-      {projects.map((project) => {
-        const active = project.path === activePath;
-        return (
-          <li key={project.path}>
-            <button
-              type="button"
-              onClick={() =>
-                route.navigate({ page: "project", projectPath: project.path })
-              }
+    <>
+      <ul className="flex flex-col gap-0.5 px-2">
+        {projects.map((project) => {
+          const active = project.path === activePath;
+          return (
+            <li
+              key={project.path}
               className={cn(
-                "group flex h-7 w-full items-center gap-2 rounded px-2",
-                "text-sm transition-colors duration-fast ease-swift",
+                "group relative flex h-7 items-center rounded",
+                "transition-colors duration-fast ease-swift",
                 active
                   ? "bg-bg-elevated text-fg-primary"
                   : "text-fg-secondary hover:bg-bg-elevated/60 hover:text-fg-primary",
               )}
             >
-              <Folder
-                className={cn("h-3.5 w-3.5", active ? "text-accent" : "text-fg-muted")}
-                strokeWidth={1.75}
+              <button
+                type="button"
+                onClick={() =>
+                  route.navigate({ page: "project", projectPath: project.path })
+                }
+                className="absolute inset-0 rounded"
+                aria-label={`Open ${project.name}`}
               />
-              <span className="min-w-0 flex-1 truncate text-left">{project.name}</span>
-              {project.actions.length > 0 ? (
-                <span className="shrink-0 text-2xs text-fg-muted">
-                  {project.actions.length}
+              <div className="pointer-events-none relative flex h-full w-full items-center gap-2 px-2 text-sm">
+                <Folder
+                  className={cn(
+                    "h-3.5 w-3.5 shrink-0",
+                    active ? "text-accent" : "text-fg-muted",
+                  )}
+                  strokeWidth={1.75}
+                />
+                <span className="min-w-0 flex-1 truncate text-left">
+                  {project.name}
                 </span>
-              ) : null}
-            </button>
-          </li>
-        );
-      })}
-    </ul>
+                {project.actions.length > 0 ? (
+                  <span
+                    className={cn(
+                      "shrink-0 text-2xs text-fg-muted",
+                      "transition-opacity duration-fast ease-swift",
+                      "group-hover:opacity-0",
+                    )}
+                  >
+                    {project.actions.length}
+                  </span>
+                ) : null}
+                <div className="pointer-events-auto shrink-0">
+                  <ProjectRowMenu
+                    projectName={project.name}
+                    variant="hover"
+                    stopPropagation
+                    onRename={() => setRenameTarget(project)}
+                    onDelete={() => setDeleteTarget(project)}
+                  />
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      {renameTarget ? (
+        <RenameProjectDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setRenameTarget(null);
+          }}
+          projectPath={renameTarget.path}
+          projectName={renameTarget.name}
+          onRenamed={(newPath) => {
+            // If the renamed project is the active route, follow it to its
+            // new path. Otherwise the tree refetch will surface the new name
+            // without disrupting whatever the user was looking at.
+            if (activePath === renameTarget.path) {
+              route.navigate({ page: "project", projectPath: newPath });
+            }
+          }}
+        />
+      ) : null}
+      {deleteTarget ? (
+        <DeleteProjectDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setDeleteTarget(null);
+          }}
+          projectPath={deleteTarget.path}
+          projectName={deleteTarget.name}
+          onDeleted={() => {
+            if (activePath === deleteTarget.path) {
+              route.navigate({ page: "home" });
+            }
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -242,12 +307,23 @@ function NewProjectDialog({
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const createProject = useCreateProject();
+  const treeQuery = useTreeQuery();
   const route = useRoute();
+
+  const trimmed = name.trim();
+  const existingNames = (treeQuery.data?.projects ?? []).map((p) =>
+    p.name.toLowerCase(),
+  );
+  const empty = trimmed.length === 0;
+  const collides = !empty && existingNames.includes(trimmed.toLowerCase());
+  const validationHint = collides
+    ? `A project named "${trimmed}" already exists.`
+    : null;
+  const disableSubmit = createProject.isPending || empty || collides;
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    const trimmed = name.trim();
-    if (!trimmed) return;
+    if (disableSubmit) return;
     setError(null);
     createProject.mutate(trimmed, {
       onSuccess: (projectPath) => {
@@ -288,7 +364,11 @@ function NewProjectDialog({
             onChange={(e) => setName(e.target.value)}
             placeholder="Project name"
             aria-label="Project name"
+            aria-invalid={collides ? true : undefined}
           />
+          {validationHint ? (
+            <p className="mt-2 text-xs text-fg-muted">{validationHint}</p>
+          ) : null}
           {error ? (
             <p role="alert" className="mt-2 text-xs text-danger">
               {error}
@@ -307,7 +387,7 @@ function NewProjectDialog({
               variant="primary"
               size="md"
               type="submit"
-              disabled={createProject.isPending || !name.trim()}
+              disabled={disableSubmit}
             >
               {createProject.isPending ? "Creating…" : "Create project"}
             </Button>

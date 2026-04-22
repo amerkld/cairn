@@ -1,14 +1,16 @@
-//! Soft delete for vault notes. Files moved to trash are **not** removed
-//! from disk — they're relocated to `.cairn/trash/`, mirroring their
-//! vault-relative path so `.cairn/trash/Captures/note.md` obviously came
-//! from `Captures/note.md`. An index at `.cairn/trash-index.json` records
-//! `{ originalPath, trashedPath, title, deletedAt }` for each entry so
-//! the Trash UI doesn't need to re-parse the whole trash tree on every
-//! view.
+//! Soft delete for vault notes **and** whole project folders. Items moved
+//! to trash are **not** removed from disk — they're relocated to
+//! `.cairn/trash/`, mirroring their vault-relative path so
+//! `.cairn/trash/Captures/note.md` obviously came from `Captures/note.md`.
+//! An index at `.cairn/trash-index.json` records `{ originalPath,
+//! trashedPath, title, deletedAt, kind }` for each entry so the Trash UI
+//! doesn't need to re-parse the whole trash tree on every view.
 //!
-//! Restore moves the file back to its original relative path, collision-
-//! renaming if a file with that name already exists. Empty Trash deletes
-//! everything inside `.cairn/trash/` plus the index entries.
+//! Each trash entry is a single unit: a note is one file, a project is one
+//! folder (carrying all its actions, docs, and assets with it). Restore
+//! moves the item back to its original relative path, collision-renaming
+//! if the destination is occupied. Empty Trash deletes everything inside
+//! `.cairn/trash/` plus the index entries.
 
 use crate::error::{AppError, AppResult};
 use crate::md;
@@ -17,22 +19,36 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
 
 const TRASH_DIR_NAME: &str = "trash";
 const INDEX_FILE: &str = "trash-index.json";
+
+/// What sort of item this trash entry represents. Lets the UI pick the
+/// right icon and summary line without re-inspecting the filesystem.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum EntryKind {
+    #[default]
+    Note,
+    Project,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Entry {
     /// Vault-relative path the note was trashed from.
     #[serde(rename = "originalPath")]
     pub original_path: PathBuf,
-    /// Absolute path of the file in `.cairn/trash/`.
+    /// Absolute path of the file or folder in `.cairn/trash/`.
     #[serde(rename = "trashedPath")]
     pub trashed_path: PathBuf,
     pub title: String,
     #[serde(rename = "deletedAt")]
     pub deleted_at: DateTime<Utc>,
+    /// `Note` for single-file trash entries, `Project` for whole folders.
+    /// Defaults to `Note` so older index files (pre-projects-in-trash) still
+    /// deserialize cleanly.
+    #[serde(default)]
+    pub kind: EntryKind,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -43,8 +59,10 @@ struct IndexFile {
 
 // ─── Public API ──────────────────────────────────────────────────────────
 
-/// Soft-delete a note: move it into `.cairn/trash/` (creating the mirrored
-/// directory tree) and append to the index. Returns the final trashed path.
+/// Soft-delete a note or project folder: move it into `.cairn/trash/`
+/// (creating the mirrored directory tree) and append to the index. For a
+/// directory, the entire subtree moves as one unit under a single index
+/// entry. Returns the final trashed path.
 pub fn move_to_trash(vault_root: &Path, path: &Path) -> AppResult<PathBuf> {
     if !path.exists() {
         return Err(AppError::PathNotFound(path.to_path_buf()));
@@ -59,14 +77,25 @@ pub fn move_to_trash(vault_root: &Path, path: &Path) -> AppResult<PathBuf> {
     // If something is already there, pick a unique name — two deletes of
     // the same path shouldn't overwrite each other.
     let final_trashed = unique_destination(&trashed_path);
+    let is_dir = path.is_dir();
     fs::rename(path, &final_trashed)?;
 
-    let title = read_title(&final_trashed).unwrap_or_else(|| {
-        path.file_stem()
+    let (kind, title) = if is_dir {
+        let name = final_trashed
+            .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("Untitled")
-            .to_string()
-    });
+            .to_string();
+        (EntryKind::Project, name)
+    } else {
+        let title = read_title(&final_trashed).unwrap_or_else(|| {
+            path.file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Untitled")
+                .to_string()
+        });
+        (EntryKind::Note, title)
+    };
 
     let mut index = load_index(vault_root)?;
     index.push(Entry {
@@ -74,6 +103,7 @@ pub fn move_to_trash(vault_root: &Path, path: &Path) -> AppResult<PathBuf> {
         trashed_path: final_trashed.clone(),
         title,
         deleted_at: Utc::now(),
+        kind,
     });
     save_index(vault_root, &index)?;
 
@@ -214,16 +244,15 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> AppResult<()> {
     Ok(())
 }
 
-/// Sanity check exposed to the UI: count trash entries currently on disk.
-/// Uses the filesystem, not the index, to stay honest about external cleanups.
+/// Number of trash entries (notes + projects) according to the index.
+///
+/// Each project counts as a single entry regardless of how many notes it
+/// contains — the trash is a list of user-visible items, not a count of
+/// bytes on disk. Falls back to zero on a missing or unreadable index.
 pub fn count_on_disk(vault_root: &Path) -> u32 {
-    let trash_dir = vault_root.join(CAIRN_DIR).join(TRASH_DIR_NAME);
-    WalkDir::new(&trash_dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().is_file())
-        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("md"))
-        .count() as u32
+    load_index(vault_root)
+        .map(|entries| entries.len() as u32)
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -390,5 +419,122 @@ mod tests {
         let (_tmp, root) = setup_vault();
         let err = restore(&root, &root.join(CAIRN_DIR).join("trash/nope.md")).unwrap_err();
         assert!(matches!(err, AppError::PathNotFound(_)));
+    }
+
+    // ─── Directory (project) entries ─────────────────────────────────────
+
+    #[test]
+    fn move_to_trash_directory_creates_single_project_entry() {
+        let (_tmp, root) = setup_vault();
+        // Build a project folder with nested notes — the whole thing should
+        // turn into one index entry, not one per file.
+        let project = root.join("Projects").join("Alpha");
+        fs::create_dir_all(project.join("Actions")).unwrap();
+        write_note(&project.join("Actions").join("a.md"), "one");
+        write_note(&project.join("Actions").join("b.md"), "two");
+        write_note(&project.join("doc.md"), "three");
+
+        let trashed = move_to_trash(&root, &project).unwrap();
+
+        assert!(!project.exists());
+        assert!(trashed.is_dir());
+        let entries = list(&root).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].kind, EntryKind::Project);
+        assert_eq!(entries[0].title, "Alpha");
+        // All three nested files came along for the ride.
+        assert!(trashed.join("Actions").join("a.md").exists());
+        assert!(trashed.join("Actions").join("b.md").exists());
+        assert!(trashed.join("doc.md").exists());
+    }
+
+    #[test]
+    fn restore_directory_brings_project_folder_back_as_one_unit() {
+        let (_tmp, root) = setup_vault();
+        let project = root.join("Projects").join("Beta");
+        fs::create_dir_all(project.join("Actions")).unwrap();
+        write_note(&project.join("Actions").join("x.md"), "body");
+
+        let trashed = move_to_trash(&root, &project).unwrap();
+        let restored = restore(&root, &trashed).unwrap();
+
+        assert_eq!(restored, project);
+        assert!(restored.join("Actions").join("x.md").exists());
+        assert!(list(&root).unwrap().is_empty());
+    }
+
+    #[test]
+    fn restore_directory_collision_renames_with_suffix() {
+        let (_tmp, root) = setup_vault();
+        let project = root.join("Projects").join("Gamma");
+        fs::create_dir_all(project.join("Actions")).unwrap();
+        let trashed = move_to_trash(&root, &project).unwrap();
+
+        // User creates a new project at the same path before restoring.
+        fs::create_dir_all(project.join("Actions")).unwrap();
+
+        let restored = restore(&root, &trashed).unwrap();
+        assert_ne!(restored, project);
+        assert!(restored
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap()
+            .contains("Gamma (1)"));
+        // Both live now.
+        assert!(project.exists());
+        assert!(restored.exists());
+    }
+
+    #[test]
+    fn note_entry_defaults_to_note_kind() {
+        let (_tmp, root) = setup_vault();
+        let note = root.join("Captures").join("x.md");
+        write_note(&note, "---\n---\n\nbody");
+        move_to_trash(&root, &note).unwrap();
+        let entries = list(&root).unwrap();
+        assert_eq!(entries[0].kind, EntryKind::Note);
+    }
+
+    #[test]
+    fn entry_deserializes_without_kind_field_as_note() {
+        // Legacy index files (written before projects could be trashed) have
+        // no `kind` field. Those entries must still load, defaulting to Note.
+        let (_tmp, root) = setup_vault();
+        let legacy = serde_json::json!({
+            "entries": [{
+                "originalPath": "Captures/legacy.md",
+                "trashedPath": root.join(CAIRN_DIR).join("trash/Captures/legacy.md"),
+                "title": "Legacy",
+                "deletedAt": "2026-01-01T00:00:00Z",
+            }]
+        });
+        fs::write(
+            root.join(CAIRN_DIR).join("trash-index.json"),
+            serde_json::to_vec(&legacy).unwrap(),
+        )
+        .unwrap();
+
+        let entries = list(&root).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].kind, EntryKind::Note);
+        assert_eq!(entries[0].title, "Legacy");
+    }
+
+    #[test]
+    fn count_on_disk_returns_one_per_entry_regardless_of_nested_files() {
+        let (_tmp, root) = setup_vault();
+        // One note + one project containing two nested notes = two index
+        // entries total (not three).
+        let note = root.join("Captures").join("n.md");
+        write_note(&note, "---\n---\n\nhi");
+        move_to_trash(&root, &note).unwrap();
+
+        let project = root.join("Projects").join("Delta");
+        fs::create_dir_all(project.join("Actions")).unwrap();
+        write_note(&project.join("Actions").join("a.md"), "a");
+        write_note(&project.join("Actions").join("b.md"), "b");
+        move_to_trash(&root, &project).unwrap();
+
+        assert_eq!(count_on_disk(&root), 2);
     }
 }

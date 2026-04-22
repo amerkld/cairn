@@ -308,6 +308,37 @@ export function useCreateProject() {
   });
 }
 
+/** After a project rename or delete, every path-keyed cache that could
+ * contain references inside the project needs to refetch. */
+function invalidateAfterProjectMove(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: queryKeys.tree });
+  qc.invalidateQueries({ queryKey: queryKeys.homeActions });
+  qc.invalidateQueries({ queryKey: queryKeys.reminders });
+  qc.invalidateQueries({ queryKey: queryKeys.trash });
+  qc.invalidateQueries({ queryKey: ["folder"] });
+  qc.invalidateQueries({ queryKey: ["note"] });
+}
+
+export function useRenameProject() {
+  const qc = useQueryClient();
+  return useMutation<
+    string,
+    unknown,
+    { oldPath: string; newName: string }
+  >({
+    mutationFn: ({ oldPath, newName }) => api.renameProject(oldPath, newName),
+    onSuccess: () => invalidateAfterProjectMove(qc),
+  });
+}
+
+export function useDeleteProject() {
+  const qc = useQueryClient();
+  return useMutation<void, unknown, string>({
+    mutationFn: (path) => api.deleteProject(path),
+    onSuccess: () => invalidateAfterProjectMove(qc),
+  });
+}
+
 export function useCreateAction() {
   const qc = useQueryClient();
   return useMutation<NoteRef, unknown, { projectPath: string; body?: string }>({

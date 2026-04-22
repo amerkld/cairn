@@ -114,6 +114,8 @@ Commands are declared in `src-tauri/src/commands.rs` and proxied from the fronte
 | `write_note`      | `{ path, note }`        | `void`                   | atomic; preserves unknown frontmatter keys |
 | `paste_image`     | `{ notePath, ext, bytes }` | `string` (asset path relative to note) | writes `<note-dir>/assets/<ulid>.<ext>` |
 | `create_project`  | `{ name }`              | `string` (project path)  | creates `Projects/<name>/Actions/` |
+| `rename_project`  | `{ oldPath, newName }`  | `string` (new project path) | sanitizes name; errors on collision; rewrites reminder/action-order paths; triggers scheduler rebuild |
+| `delete_project`  | `{ path }`              | `void`                   | soft-delete: moves folder to `.cairn/trash/` as one entry, purges reminder/action-order refs |
 | `create_action`   | `{ projectPath, body? }` | `NoteRef`               | writes action with `status: open` |
 | `complete_action` | `{ path, note? }`       | `string` (archive path)  | sets `completed_at` + moves to `Actions/Archive/` |
 | `list_home_actions` | —                     | `HomeAction[]`           | flat list of open actions, ordered by state.json |

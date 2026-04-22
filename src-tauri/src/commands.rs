@@ -306,6 +306,40 @@ pub fn create_project(state: State<'_, AppState>, name: String) -> AppResult<Pat
     fs::create_project(&root, &name)
 }
 
+/// Rename an existing project. Sanitizes the new name, refuses to overwrite
+/// another project, and rewrites paths in the reminder index and Home
+/// action order. Returns the new absolute project path for the UI's router.
+///
+/// Triggers a scheduler rebuild so the change takes effect without waiting
+/// for the file watcher.
+#[tauri::command]
+pub fn rename_project(
+    state: State<'_, AppState>,
+    old_path: String,
+    new_name: String,
+) -> AppResult<PathBuf> {
+    let root = active_vault_path(&state)?;
+    let old = PathBuf::from(old_path);
+    let new_path = fs::rename_project(&root, &old, &new_name)?;
+    if let Some(scheduler) = state.reminders.lock().as_ref() {
+        scheduler.rebuild()?;
+    }
+    Ok(new_path)
+}
+
+/// Soft-delete a project. Moves the whole folder to `.cairn/trash/` as a
+/// single entry and purges any reminder/action-order references pointing
+/// inside the project. Restore is available from the Trash page.
+#[tauri::command]
+pub fn delete_project(state: State<'_, AppState>, path: String) -> AppResult<()> {
+    let root = active_vault_path(&state)?;
+    fs::soft_delete_project(&root, &PathBuf::from(path))?;
+    if let Some(scheduler) = state.reminders.lock().as_ref() {
+        scheduler.rebuild()?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn create_action(
     state: State<'_, AppState>,

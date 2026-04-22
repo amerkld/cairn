@@ -100,6 +100,8 @@ pub fn run() {
             commands::write_note,
             commands::paste_image,
             commands::create_project,
+            commands::rename_project,
+            commands::delete_project,
             commands::create_action,
             commands::complete_action,
             commands::list_home_actions,

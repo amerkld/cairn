@@ -8,11 +8,12 @@
  *     into subdirectories. `Actions/` and `assets/` are hidden from the docs
  *     browser since they have their own purposes.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { TagFilter } from "@/tags/TagFilter";
 import { applyTagFilter } from "@/tags/filter";
 import {
   Plus,
+  Pencil,
   ListTodo,
   Folder,
   ArrowRight,
@@ -24,14 +25,19 @@ import {
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { Button } from "@/ds/Button";
 import { Badge } from "@/ds/Badge";
+import { Input } from "@/ds/Input";
 import { cn } from "@/lib/cn";
 import type { FolderEntry, NoteRef, Project as ProjectType } from "@/lib/invoke";
 import {
   useCreateAction,
   useFolderQuery,
+  useRenameProject,
   useTreeQuery,
 } from "@/lib/queries";
 import { useRoute } from "@/shell/routing";
+import { ProjectRowMenu } from "@/shell/ProjectRowMenu";
+import { RenameProjectDialog } from "@/shell/RenameProjectDialog";
+import { DeleteProjectDialog } from "@/shell/DeleteProjectDialog";
 
 // Folder names to hide from the docs browser at the project root.
 // `Actions/` has its own section; `assets/` is app-managed (pasted images).
@@ -50,6 +56,8 @@ export function ProjectPage({ projectPath }: ProjectPageProps) {
   const createAction = useCreateAction();
   const route = useRoute();
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   if (treeQuery.isLoading) return <LoadingSkeleton />;
   if (!project) return <NotFound path={projectPath} />;
@@ -78,20 +86,30 @@ export function ProjectPage({ projectPath }: ProjectPageProps) {
             <Folder className="h-3 w-3" strokeWidth={1.75} />
             Project
           </div>
-          <h1 className="truncate text-2xl font-semibold tracking-tight text-fg-primary">
-            {project.name}
-          </h1>
+          <EditableProjectTitle
+            project={project}
+            onRenamed={(newPath) =>
+              route.navigate({ page: "project", projectPath: newPath })
+            }
+          />
         </div>
-        <Button
-          variant="primary"
-          size="md"
-          onClick={newAction}
-          disabled={createAction.isPending}
-          className="gap-2"
-        >
-          <Plus className="h-4 w-4" strokeWidth={1.75} />
-          {createAction.isPending ? "Creating…" : "New action"}
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant="primary"
+            size="md"
+            onClick={newAction}
+            disabled={createAction.isPending}
+            className="gap-2"
+          >
+            <Plus className="h-4 w-4" strokeWidth={1.75} />
+            {createAction.isPending ? "Creating…" : "New action"}
+          </Button>
+          <ProjectRowMenu
+            projectName={project.name}
+            onRename={() => setRenameOpen(true)}
+            onDelete={() => setDeleteOpen(true)}
+          />
+        </div>
       </header>
 
       <TagFilter selected={tagFilter} onSelect={setTagFilter} />
@@ -102,6 +120,151 @@ export function ProjectPage({ projectPath }: ProjectPageProps) {
         tagFilter={tagFilter}
       />
       <DocsSection project={project} tagFilter={tagFilter} />
+
+      <RenameProjectDialog
+        open={renameOpen}
+        onOpenChange={setRenameOpen}
+        projectPath={project.path}
+        projectName={project.name}
+        onRenamed={(newPath) =>
+          route.navigate({ page: "project", projectPath: newPath })
+        }
+      />
+      <DeleteProjectDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        projectPath={project.path}
+        projectName={project.name}
+        onDeleted={() => route.navigate({ page: "home" })}
+      />
+    </div>
+  );
+}
+
+/**
+ * Click-to-edit project title. At rest it's an `<h1>` with a hover pencil
+ * affordance; on click it swaps to an input that commits on Enter or blur
+ * and cancels on Escape. Collision checks run live against the tree so
+ * the user can't submit a name that's already taken by another project.
+ */
+function EditableProjectTitle({
+  project,
+  onRenamed,
+}: {
+  project: ProjectType;
+  onRenamed: (newPath: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(project.name);
+  const submittingRef = useRef(false);
+  const treeQuery = useTreeQuery();
+  const renameProject = useRenameProject();
+
+  // Reset the buffer when we (re-)enter edit mode so stale edits from a
+  // previous session don't leak in.
+  useEffect(() => {
+    if (editing) {
+      setValue(project.name);
+      submittingRef.current = false;
+    }
+  }, [editing, project.name]);
+
+  const trimmed = value.trim();
+  const otherNames = (treeQuery.data?.projects ?? [])
+    .filter((p) => p.path !== project.path)
+    .map((p) => p.name.toLowerCase());
+  const unchanged = trimmed === project.name;
+  const empty = trimmed.length === 0;
+  const collides = !empty && otherNames.includes(trimmed.toLowerCase());
+  const isValid = !empty && !collides && !unchanged;
+
+  function commit() {
+    if (submittingRef.current) return;
+    if (!isValid) {
+      // Unchanged / empty / collision on blur → silently cancel.
+      setEditing(false);
+      setValue(project.name);
+      return;
+    }
+    submittingRef.current = true;
+    renameProject.mutate(
+      { oldPath: project.path, newName: trimmed },
+      {
+        onSuccess: (newPath) => {
+          setEditing(false);
+          onRenamed(newPath);
+        },
+        onError: () => {
+          // The tree refetch will restore the canonical name; close the
+          // editor so the user isn't stuck in a broken state.
+          setEditing(false);
+          setValue(project.name);
+        },
+      },
+    );
+  }
+
+  function cancel() {
+    setValue(project.name);
+    setEditing(false);
+  }
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className={cn(
+          "group/title -ml-1 flex min-w-0 items-center gap-2 rounded px-1 py-0.5",
+          "text-left transition-colors duration-fast ease-swift",
+          "hover:bg-bg-elevated/60",
+        )}
+        aria-label={`Rename ${project.name}`}
+      >
+        <h1 className="truncate text-2xl font-semibold tracking-tight text-fg-primary">
+          {project.name}
+        </h1>
+        <Pencil
+          className={cn(
+            "h-3.5 w-3.5 shrink-0 text-fg-muted",
+            "opacity-0 transition-opacity duration-fast ease-swift",
+            "group-hover/title:opacity-100",
+          )}
+          strokeWidth={1.75}
+        />
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <Input
+        autoFocus
+        onFocus={(e) => e.currentTarget.select()}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            cancel();
+          }
+        }}
+        onBlur={commit}
+        disabled={renameProject.isPending}
+        aria-label="Project name"
+        aria-invalid={empty || collides ? true : undefined}
+        className="h-9 text-2xl font-semibold tracking-tight"
+      />
+      {collides ? (
+        <p className="text-xs text-fg-muted">
+          A project named "{trimmed}" already exists.
+        </p>
+      ) : empty ? (
+        <p className="text-xs text-fg-muted">Name is required.</p>
+      ) : null}
     </div>
   );
 }

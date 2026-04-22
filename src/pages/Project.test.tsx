@@ -176,6 +176,86 @@ describe("ProjectPage", () => {
     expect(screen.queryByRole("button", { name: /^assets$/ })).not.toBeInTheDocument();
   });
 
+  it("click-to-edit title renames the project and navigates to the new path", async () => {
+    const renames: Array<Record<string, unknown>> = [];
+    const navigate = vi.fn();
+    mockIPC((cmd, args) => {
+      if (cmd === "list_tree") {
+        return {
+          ...emptyTree,
+          projects: [
+            { name: "Alpha", path: "/v/Projects/Alpha", actions: [], subdirectories: [] },
+            { name: "Beta", path: "/v/Projects/Beta", actions: [], subdirectories: [] },
+          ],
+        };
+      }
+      if (cmd === "list_folder") return emptyFolder;
+      if (cmd === "rename_project") {
+        renames.push(args as Record<string, unknown>);
+        return "/v/Projects/Gamma";
+      }
+      throw new Error(`unexpected ${cmd}`);
+    });
+
+    render(wrap(<ProjectPage projectPath="/v/Projects/Alpha" />, navigate));
+    const user = userEvent.setup();
+
+    // Click the title to enter edit mode.
+    await user.click(await screen.findByRole("button", { name: /Rename Alpha/ }));
+    const input = await screen.findByLabelText(/Project name/);
+    await user.clear(input);
+    await user.type(input, "Gamma{Enter}");
+
+    await waitFor(() => expect(renames).toHaveLength(1));
+    expect(renames[0]).toEqual({
+      oldPath: "/v/Projects/Alpha",
+      newName: "Gamma",
+    });
+    expect(navigate).toHaveBeenCalledWith({
+      page: "project",
+      projectPath: "/v/Projects/Gamma",
+    });
+  });
+
+  it("click-to-edit title blocks submit on collision with another project", async () => {
+    const renames: Array<Record<string, unknown>> = [];
+    mockIPC((cmd, args) => {
+      if (cmd === "list_tree") {
+        return {
+          ...emptyTree,
+          projects: [
+            { name: "Alpha", path: "/v/Projects/Alpha", actions: [], subdirectories: [] },
+            { name: "Beta", path: "/v/Projects/Beta", actions: [], subdirectories: [] },
+          ],
+        };
+      }
+      if (cmd === "list_folder") return emptyFolder;
+      if (cmd === "rename_project") {
+        renames.push(args as Record<string, unknown>);
+        return "/should-not-happen";
+      }
+      throw new Error(`unexpected ${cmd}`);
+    });
+
+    render(wrap(<ProjectPage projectPath="/v/Projects/Alpha" />));
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: /Rename Alpha/ }));
+    const input = await screen.findByLabelText(/Project name/);
+    await user.clear(input);
+    await user.type(input, "Beta");
+
+    expect(
+      await screen.findByText(/A project named "Beta" already exists/),
+    ).toBeInTheDocument();
+
+    // Pressing Enter on a collision must NOT fire rename_project.
+    await user.keyboard("{Enter}");
+    // A micro-delay to let any stray mutation queue up (it shouldn't).
+    await new Promise((r) => setTimeout(r, 20));
+    expect(renames).toHaveLength(0);
+  });
+
   it("clicking a folder descends into it and the breadcrumb reflects the path", async () => {
     const calls: string[] = [];
     mockIPC((cmd, args) => {
