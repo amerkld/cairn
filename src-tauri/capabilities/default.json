@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capabilities available to Cairn's frontend. Note: filesystem access is NOT granted here — all FS operations go through our own Rust commands in commands.rs so invariants (atomic writes, trash, .cairn ownership) cannot be bypassed.",
-  "windows": ["main"],
+  "windows": ["main", "quick-capture"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
@@ -10,8 +10,14 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",
     "core:window:allow-is-maximized",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:webview:allow-webview-hide",
+    "core:webview:allow-webview-show",
     "dialog:default",
     "notification:default",
+    "global-shortcut:default",
     {
       "identifier": "opener:allow-open-url",
       "allow": [{ "url": "https://x.com/*" }]

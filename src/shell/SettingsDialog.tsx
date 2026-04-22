@@ -20,8 +20,16 @@ import { Button } from "@/ds/Button";
 import { Switch } from "@/ds/Switch";
 import { cn } from "@/lib/cn";
 import { useEditorPreferences } from "@/lib/editor-preferences";
-import type { VaultSummary } from "@/lib/invoke";
+import {
+  DEFAULT_QUICK_CAPTURE_SHORTCUT,
+  type VaultSummary,
+} from "@/lib/invoke";
+import {
+  usePreferencesQuery,
+  useSetQuickCaptureShortcut,
+} from "@/lib/queries";
 import { CairnLogo } from "./CairnLogo";
+import { ShortcutRecorder } from "./ShortcutRecorder";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -61,6 +69,10 @@ export function SettingsDialog({
 
           <Section title="Editor">
             <EditorFullWidthRow />
+          </Section>
+
+          <Section title="Shortcuts">
+            <QuickCaptureShortcutRow />
           </Section>
 
           <Section title="About">
@@ -186,6 +198,48 @@ function EditorFullWidthRow() {
       }
     />
   );
+}
+
+function QuickCaptureShortcutRow() {
+  const prefs = usePreferencesQuery();
+  const setShortcut = useSetQuickCaptureShortcut();
+  const [error, setError] = useState<string | null>(null);
+
+  const current =
+    prefs.data?.quickCaptureShortcut ?? DEFAULT_QUICK_CAPTURE_SHORTCUT;
+
+  function handleChange(next: string) {
+    setError(null);
+    setShortcut.mutate(next, {
+      onError: (err) => setError(extractMessage(err)),
+    });
+  }
+
+  return (
+    <SettingRow
+      label="Quick capture"
+      description="System-wide shortcut to open Quick Capture from anywhere while Cairn is running."
+      control={
+        <ShortcutRecorder
+          aria-label="Quick capture shortcut"
+          value={current}
+          defaultValue={DEFAULT_QUICK_CAPTURE_SHORTCUT}
+          onChange={handleChange}
+          disabled={prefs.isLoading || setShortcut.isPending}
+          error={error}
+        />
+      }
+    />
+  );
+}
+
+function extractMessage(error: unknown): string {
+  if (error && typeof error === "object" && "message" in error) {
+    const m = (error as { message: unknown }).message;
+    if (typeof m === "string") return m;
+  }
+  if (error instanceof Error) return error.message;
+  return "Could not update the shortcut.";
 }
 
 function Row({

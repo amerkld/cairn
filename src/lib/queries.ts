@@ -16,8 +16,10 @@ import {
   type FolderContents,
   type HomeAction,
   type MoveTarget,
+  type NewNoteArgs,
   type NoteRef,
   type ParsedNote,
+  type Preferences,
   type ReminderEntry,
   type TagInfo,
   type Tree,
@@ -35,6 +37,7 @@ export const queryKeys = {
   reminders: ["reminders"] as const,
   tags: ["tags"] as const,
   trash: ["trash"] as const,
+  preferences: ["preferences"] as const,
 };
 
 export function useVaultsQuery(
@@ -130,8 +133,8 @@ export function useCloseActiveVault() {
 
 export function useCreateCapture() {
   const qc = useQueryClient();
-  return useMutation<NoteRef, unknown, string | undefined>({
-    mutationFn: (body) => api.createCapture(body),
+  return useMutation<NoteRef, unknown, NewNoteArgs | undefined>({
+    mutationFn: (args) => api.createCapture(args),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.tree });
     },
@@ -140,8 +143,8 @@ export function useCreateCapture() {
 
 export function useCreateSomeday() {
   const qc = useQueryClient();
-  return useMutation<NoteRef, unknown, string | undefined>({
-    mutationFn: (body) => api.createSomeday(body),
+  return useMutation<NoteRef, unknown, NewNoteArgs | undefined>({
+    mutationFn: (args) => api.createSomeday(args),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.tree });
     },
@@ -341,11 +344,41 @@ export function useDeleteProject() {
 
 export function useCreateAction() {
   const qc = useQueryClient();
-  return useMutation<NoteRef, unknown, { projectPath: string; body?: string }>({
-    mutationFn: ({ projectPath, body }) => api.createAction(projectPath, body),
+  return useMutation<
+    NoteRef,
+    unknown,
+    { projectPath: string; title?: string; body?: string }
+  >({
+    mutationFn: ({ projectPath, title, body }) => {
+      const args: NewNoteArgs = {
+        ...(title !== undefined && { title }),
+        ...(body !== undefined && { body }),
+      };
+      return api.createAction(projectPath, args);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.tree });
       qc.invalidateQueries({ queryKey: queryKeys.homeActions });
+    },
+  });
+}
+
+export function usePreferencesQuery(
+  options?: Omit<UseQueryOptions<Preferences>, "queryKey" | "queryFn">,
+) {
+  return useQuery({
+    queryKey: queryKeys.preferences,
+    queryFn: api.getPreferences,
+    ...options,
+  });
+}
+
+export function useSetQuickCaptureShortcut() {
+  const qc = useQueryClient();
+  return useMutation<void, unknown, string>({
+    mutationFn: (accelerator) => api.setQuickCaptureShortcut(accelerator),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.preferences });
     },
   });
 }

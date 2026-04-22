@@ -119,6 +119,30 @@ export interface AppError {
 /** Target location for moving a note. Extra slashes map to a vault-relative path. */
 export type MoveTarget = "captures" | "someday" | (string & {});
 
+/**
+ * App-level (cross-vault) preferences. Mirrors Rust's `PreferencesSnapshot`.
+ */
+export interface Preferences {
+  /** Tauri accelerator string for the Quick Capture global shortcut, e.g. `CommandOrControl+Shift+N`. */
+  quickCaptureShortcut: string;
+}
+
+/**
+ * Must match `preferences::DEFAULT_QUICK_CAPTURE_SHORTCUT` in the Rust side.
+ * Used by the settings UI as the accelerator a "Reset to default" restores.
+ */
+export const DEFAULT_QUICK_CAPTURE_SHORTCUT = "CommandOrControl+Shift+N";
+
+/**
+ * Args for note-creation commands. Title is written to frontmatter; body is
+ * the markdown beneath the frontmatter block. Both optional — most callers
+ * will pass one or the other, not both.
+ */
+export interface NewNoteArgs {
+  title?: string;
+  body?: string;
+}
+
 async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   return rawInvoke<T>(command, args);
 }
@@ -134,10 +158,16 @@ export const api = {
   forgetVault: (path: string) => call<void>("forget_vault", { path }),
 
   listTree: () => call<Tree>("list_tree"),
-  createCapture: (body?: string) =>
-    call<NoteRef>("create_capture", body !== undefined ? { body } : undefined),
-  createSomeday: (body?: string) =>
-    call<NoteRef>("create_someday", body !== undefined ? { body } : undefined),
+  createCapture: (args: NewNoteArgs = {}) =>
+    call<NoteRef>("create_capture", {
+      title: args.title,
+      body: args.body,
+    }),
+  createSomeday: (args: NewNoteArgs = {}) =>
+    call<NoteRef>("create_someday", {
+      title: args.title,
+      body: args.body,
+    }),
   moveNote: (src: string, target: MoveTarget) =>
     call<string>("move_note", { src, target }),
 
@@ -151,11 +181,12 @@ export const api = {
   renameProject: (oldPath: string, newName: string) =>
     call<string>("rename_project", { oldPath, newName }),
   deleteProject: (path: string) => call<void>("delete_project", { path }),
-  createAction: (projectPath: string, body?: string) =>
-    call<NoteRef>(
-      "create_action",
-      body !== undefined ? { projectPath, body } : { projectPath },
-    ),
+  createAction: (projectPath: string, args: NewNoteArgs = {}) =>
+    call<NoteRef>("create_action", {
+      projectPath,
+      title: args.title,
+      body: args.body,
+    }),
   completeAction: (path: string, note?: string) =>
     call<string>("complete_action", note !== undefined ? { path, note } : { path }),
   listHomeActions: () => call<HomeAction[]>("list_home_actions"),
@@ -186,6 +217,13 @@ export const api = {
       "search_notes",
       limit !== undefined ? { query, limit } : { query },
     ),
+
+  getPreferences: () => call<Preferences>("get_preferences"),
+  setQuickCaptureShortcut: (accelerator: string) =>
+    call<void>("set_quick_capture_shortcut", { accelerator }),
+  showQuickCapture: () => call<void>("show_quick_capture"),
+  hideQuickCapture: () => call<void>("hide_quick_capture"),
+  focusMainWindow: () => call<void>("focus_main_window"),
 };
 
 export type Api = typeof api;

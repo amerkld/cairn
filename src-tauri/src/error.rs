@@ -28,6 +28,9 @@ pub enum AppError {
 
     #[error("serde error: {0}")]
     Serde(String),
+
+    #[error("shortcut error: {0}")]
+    Shortcut(String),
 }
 
 impl AppError {
@@ -40,6 +43,7 @@ impl AppError {
             AppError::NoActiveVault => "no_active_vault",
             AppError::Io(_) => "io",
             AppError::Serde(_) => "serde",
+            AppError::Shortcut(_) => "shortcut",
         }
     }
 }

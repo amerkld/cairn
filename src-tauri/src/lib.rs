@@ -10,6 +10,7 @@
 pub mod error;
 pub mod fs;
 pub mod md;
+pub mod preferences;
 pub mod registry;
 pub mod reminders;
 pub mod search;
@@ -23,8 +24,16 @@ mod commands;
 
 use parking_lot::{Mutex, RwLock};
 use reminders::SchedulerHandle;
-use tauri::Manager;
+use tauri::{Emitter, Manager, Monitor, PhysicalPosition, WindowEvent};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use watcher::WatcherHandle;
+
+/// Label of the floating Quick Capture window declared in `tauri.conf.json`.
+pub const QUICK_CAPTURE_WINDOW: &str = "quick-capture";
+/// Event emitted to the Quick Capture window when the global shortcut fires
+/// or a caller requests it via `show_quick_capture`. The React side listens
+/// for this to reset the form state.
+pub const QUICK_CAPTURE_OPEN_EVENT: &str = "quick-capture:open";
 
 /// Shared app state held by the Tauri runtime.
 ///
@@ -35,10 +44,97 @@ use watcher::WatcherHandle;
 ///   multiple vault trees at once.
 /// - `reminders` is the per-vault scheduler — polls for due reminders, fires
 ///   OS notifications, and emits `reminder_due` events.
+/// - `preferences` is app-wide (not per-vault) user preferences — currently
+///   just the configurable Quick Capture shortcut.
 pub struct AppState {
     pub registry: RwLock<registry::Registry>,
     pub watcher: Mutex<Option<WatcherHandle>>,
     pub reminders: Mutex<Option<SchedulerHandle>>,
+    pub preferences: RwLock<preferences::Preferences>,
+}
+
+/// Show, focus, and signal the Quick Capture window. Used by both the
+/// global-shortcut handler and the `show_quick_capture` command. Failures
+/// are logged but not bubbled — the user's global keypress should never
+/// error out because of a transient window state.
+///
+/// Before showing, re-centers the window on the monitor currently containing
+/// the mouse cursor. Without this, a user on a multi-monitor setup would
+/// see the window appear on whichever display happened to "own" it last
+/// (typically the primary), regardless of where they're actually working.
+pub fn show_quick_capture_window(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window(QUICK_CAPTURE_WINDOW) else {
+        eprintln!("quick-capture window not found");
+        return;
+    };
+
+    // Position first, so the window doesn't flash on the old monitor.
+    if let Some(monitor) = monitor_under_cursor(app) {
+        let m_pos = monitor.position();
+        let m_size = monitor.size();
+        let win_size = match window.outer_size() {
+            Ok(s) => s,
+            // Fall back to the config defaults; same units as monitor size.
+            Err(_) => tauri::PhysicalSize::new(520, 300),
+        };
+        let x = m_pos.x + ((m_size.width as i32 - win_size.width as i32) / 2).max(0);
+        let y = m_pos.y + ((m_size.height as i32 - win_size.height as i32) / 2).max(0);
+        if let Err(e) = window.set_position(PhysicalPosition::new(x, y)) {
+            eprintln!("failed to position quick-capture window: {e}");
+        }
+    }
+
+    if let Err(e) = window.show() {
+        eprintln!("failed to show quick-capture window: {e}");
+    }
+    if let Err(e) = window.set_focus() {
+        eprintln!("failed to focus quick-capture window: {e}");
+    }
+    // Emit after show so the React listener is definitely mounted on
+    // first-open; subsequent emits still reset the form state.
+    if let Err(e) = window.emit(QUICK_CAPTURE_OPEN_EVENT, ()) {
+        eprintln!("failed to emit quick-capture open event: {e}");
+    }
+}
+
+/// Return the monitor currently containing the mouse cursor, falling back
+/// to the primary monitor when we can't resolve a match (e.g. cursor is
+/// between displays or the platform lies). Returns `None` only when we
+/// can't enumerate any monitor at all.
+fn monitor_under_cursor(app: &tauri::AppHandle) -> Option<Monitor> {
+    let cursor = app.cursor_position().ok()?;
+    let monitors = app.available_monitors().ok()?;
+    for m in &monitors {
+        let pos = m.position();
+        let size = m.size();
+        let x_start = pos.x as f64;
+        let y_start = pos.y as f64;
+        let x_end = x_start + size.width as f64;
+        let y_end = y_start + size.height as f64;
+        if cursor.x >= x_start
+            && cursor.x < x_end
+            && cursor.y >= y_start
+            && cursor.y < y_end
+        {
+            return Some(m.clone());
+        }
+    }
+    app.primary_monitor().ok().flatten()
+}
+
+/// True when any Cairn window currently has OS focus. The global Quick
+/// Capture shortcut uses this to stay out of the way while the user is
+/// already inside Cairn — popping a floating dialog on top of the main
+/// window is surprising and doesn't add anything the in-app flows can't do.
+fn any_cairn_window_focused(app: &tauri::AppHandle) -> bool {
+    for label in [crate::QUICK_CAPTURE_WINDOW, "main"] {
+        if let Some(w) = app.get_webview_window(label) {
+            if w.is_focused().unwrap_or(false) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Build and run the Tauri application.
@@ -50,6 +146,26 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    // Only fire on key-down; key-up would double-trigger.
+                    if event.state() != ShortcutState::Pressed {
+                        return;
+                    }
+                    // Stay out of the way when Cairn already has focus.
+                    // The user is inside the app and can create a capture
+                    // the normal way — popping a floating dialog on top
+                    // of their workspace would be disruptive. The keypress
+                    // is already consumed by the OS hotkey registration,
+                    // so there's nothing else to do but return.
+                    if any_cairn_window_focused(app) {
+                        return;
+                    }
+                    show_quick_capture_window(app);
+                })
+                .build(),
+        )
         .setup(|app| {
             let data_dir = app
                 .path()
@@ -57,11 +173,39 @@ pub fn run() {
                 .map_err(|e| format!("resolving app_data_dir: {e}"))?;
             let reg = registry::Registry::load(&data_dir)
                 .map_err(|e| format!("loading registry: {e}"))?;
+            let prefs = preferences::Preferences::load(&data_dir)
+                .map_err(|e| format!("loading preferences: {e}"))?;
+            let initial_shortcut = prefs.quick_capture_shortcut().to_string();
             app.manage(AppState {
                 registry: RwLock::new(reg),
                 watcher: Mutex::new(None),
                 reminders: Mutex::new(None),
+                preferences: RwLock::new(prefs),
             });
+
+            // Convert window close on the floating Quick Capture window into
+            // a hide — we want the user's binding to feel stateless (open,
+            // type, dismiss, reopen), not "you closed it, now the shortcut
+            // is broken".
+            if let Some(qc) = app.get_webview_window(QUICK_CAPTURE_WINDOW) {
+                let qc_for_event = qc.clone();
+                qc.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = qc_for_event.hide();
+                    }
+                });
+            }
+
+            // Register the configured Quick Capture shortcut. A failure here
+            // (bad accelerator saved in prefs, OS already claiming the combo)
+            // must not block startup — the rest of the app still works, and
+            // the user can change the binding from Settings.
+            if let Err(err) = app.global_shortcut().register(initial_shortcut.as_str()) {
+                eprintln!(
+                    "failed to register initial Quick Capture shortcut '{initial_shortcut}': {err}",
+                );
+            }
 
             // If we have a previously-active vault, start its watcher +
             // reminder scheduler now.
@@ -121,6 +265,11 @@ pub fn run() {
             commands::empty_trash,
             commands::list_trash,
             commands::search_notes,
+            commands::get_preferences,
+            commands::set_quick_capture_shortcut,
+            commands::show_quick_capture,
+            commands::hide_quick_capture,
+            commands::focus_main_window,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start Cairn");
