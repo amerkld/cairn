@@ -8,6 +8,7 @@
 use crate::error::{AppError, AppResult};
 use crate::fs::{self, FolderContents, NoteRef, Tree};
 use crate::md::ParsedNote;
+use crate::preferences::PreferencesSnapshot;
 use crate::reminders::{self, Entry as ReminderEntry};
 use crate::search::{self, SearchHit};
 use crate::state as vault_state;
@@ -15,11 +16,12 @@ use crate::tags::{self, TagInfo};
 use crate::trash::{self, Entry as TrashEntry};
 use crate::vault::{self, CAPTURES_DIR, SOMEDAY_DIR, VaultSummary};
 use crate::watcher;
-use crate::AppState;
+use crate::{show_quick_capture_window, AppState, QUICK_CAPTURE_WINDOW};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::path::PathBuf;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
+use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 #[tauri::command]
 pub fn list_vaults(state: State<'_, AppState>) -> AppResult<Vec<VaultSummary>> {
@@ -216,21 +218,30 @@ pub fn search_notes(
     search::search(&root, &query, limit)
 }
 
-/// Create a capture — a new note under `Captures/` — with an optional
-/// initial body. Returns the ref so the UI can append it to the list
-/// before the file watcher round-trips.
+/// Create a capture — a new note under `Captures/` — with an optional title
+/// (written to the `title` frontmatter field) and initial body. Returns the
+/// ref so the UI can append it to the list before the file watcher
+/// round-trips.
 #[tauri::command]
-pub fn create_capture(state: State<'_, AppState>, body: Option<String>) -> AppResult<NoteRef> {
+pub fn create_capture(
+    state: State<'_, AppState>,
+    title: Option<String>,
+    body: Option<String>,
+) -> AppResult<NoteRef> {
     let root = active_vault_path(&state)?;
-    fs::create_note(&root.join(CAPTURES_DIR), body.as_deref())
+    fs::create_note(&root.join(CAPTURES_DIR), title.as_deref(), body.as_deref())
 }
 
 /// Create a Someday note — a new markdown file under `Someday/`. Identical
 /// to `create_capture` in shape, separated so UI intent is unambiguous.
 #[tauri::command]
-pub fn create_someday(state: State<'_, AppState>, body: Option<String>) -> AppResult<NoteRef> {
+pub fn create_someday(
+    state: State<'_, AppState>,
+    title: Option<String>,
+    body: Option<String>,
+) -> AppResult<NoteRef> {
     let root = active_vault_path(&state)?;
-    fs::create_note(&root.join(SOMEDAY_DIR), body.as_deref())
+    fs::create_note(&root.join(SOMEDAY_DIR), title.as_deref(), body.as_deref())
 }
 
 /// Move a note to a different location inside the active vault. `target`
@@ -344,12 +355,13 @@ pub fn delete_project(state: State<'_, AppState>, path: String) -> AppResult<()>
 pub fn create_action(
     state: State<'_, AppState>,
     project_path: String,
+    title: Option<String>,
     body: Option<String>,
 ) -> AppResult<NoteRef> {
     let root = active_vault_path(&state)?;
     let p = PathBuf::from(project_path);
     assert_inside(&root, &p)?;
-    fs::create_action(&p, body.as_deref())
+    fs::create_action(&p, title.as_deref(), body.as_deref())
 }
 
 #[tauri::command]
@@ -413,6 +425,87 @@ pub fn reorder_actions(
 ) -> AppResult<Vec<String>> {
     let root = active_vault_path(&state)?;
     vault_state::set_action_order(&root, order)
+}
+
+// ─── app preferences (cross-vault) ──────────────────────────────────────
+
+/// Return the user's app-level preferences snapshot. Currently just the
+/// configurable Quick Capture shortcut.
+#[tauri::command]
+pub fn get_preferences(state: State<'_, AppState>) -> AppResult<PreferencesSnapshot> {
+    Ok((&*state.preferences.read()).into())
+}
+
+/// Replace the Quick Capture global shortcut with `accelerator`. Validates
+/// by attempting to register the new accelerator before unregistering the
+/// old one — if the new accelerator is malformed or already claimed by the
+/// OS, the existing binding stays intact and the error is surfaced to the
+/// UI as an `AppError::Shortcut`.
+#[tauri::command]
+pub fn set_quick_capture_shortcut(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    accelerator: String,
+) -> AppResult<()> {
+    let trimmed = accelerator.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::Shortcut(
+            "Shortcut cannot be empty".into(),
+        ));
+    }
+
+    let old = state.preferences.read().quick_capture_shortcut().to_string();
+    if trimmed == old {
+        return Ok(());
+    }
+
+    // Register the new binding first so a failure leaves the old one live.
+    app.global_shortcut()
+        .register(trimmed)
+        .map_err(|e| AppError::Shortcut(format!("Could not register {trimmed}: {e}")))?;
+
+    // New binding is live — take down the old. A failure here leaves two
+    // shortcuts registered until restart, which is harmless (both point at
+    // the same handler). Log so it's visible in dev.
+    if let Err(e) = app.global_shortcut().unregister(old.as_str()) {
+        eprintln!("failed to unregister old shortcut '{old}': {e}");
+    }
+
+    state
+        .preferences
+        .write()
+        .set_quick_capture_shortcut(trimmed)?;
+    Ok(())
+}
+
+/// Show + focus the Quick Capture window and emit the open event. Called
+/// by the global-shortcut handler internally; also exposed to the frontend
+/// so the main window could, in the future, open capture from a menu.
+#[tauri::command]
+pub fn show_quick_capture(app: AppHandle) -> AppResult<()> {
+    show_quick_capture_window(&app);
+    Ok(())
+}
+
+/// Hide the Quick Capture window without closing it. Used after a
+/// successful submit and on Esc from the React side.
+#[tauri::command]
+pub fn hide_quick_capture(app: AppHandle) -> AppResult<()> {
+    if let Some(w) = app.get_webview_window(QUICK_CAPTURE_WINDOW) {
+        let _ = w.hide();
+    }
+    Ok(())
+}
+
+/// Bring the main window to the foreground. Used by the Quick Capture's
+/// no-vault empty state so the user can click through to the vault picker.
+#[tauri::command]
+pub fn focus_main_window(app: AppHandle) -> AppResult<()> {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+    Ok(())
 }
 
 // ─── editor preferences ─────────────────────────────────────────────────

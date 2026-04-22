@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockIPC } from "@tauri-apps/api/mocks";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SettingsDialog } from "./SettingsDialog";
 import { EditorPreferencesProvider } from "@/lib/editor-preferences";
 
@@ -33,19 +34,31 @@ function renderDialog(
   const defaults: IpcHandler = (cmd) => {
     if (cmd === "get_editor_full_width") return false;
     if (cmd === "set_editor_full_width") return null;
+    if (cmd === "get_preferences")
+      return { quickCaptureShortcut: "CommandOrControl+Shift+N" };
+    if (cmd === "set_quick_capture_shortcut") return null;
     throw new Error(`unexpected IPC: ${cmd}`);
   };
   mockIPC((cmd, args) => (ipc ?? defaults)(cmd, args as Record<string, unknown>));
 
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, refetchOnWindowFocus: false },
+      mutations: { retry: false },
+    },
+  });
+
   return render(
-    <EditorPreferencesProvider>
-      <SettingsDialog
-        open={true}
-        onOpenChange={onOpenChange}
-        vault={vault}
-        onOpenShortcuts={onOpenShortcuts}
-      />
-    </EditorPreferencesProvider>,
+    <QueryClientProvider client={client}>
+      <EditorPreferencesProvider>
+        <SettingsDialog
+          open={true}
+          onOpenChange={onOpenChange}
+          vault={vault}
+          onOpenShortcuts={onOpenShortcuts}
+        />
+      </EditorPreferencesProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -100,6 +113,9 @@ describe("SettingsDialog", () => {
     renderDialog({}, (cmd) => {
       if (cmd === "get_editor_full_width") return true;
       if (cmd === "set_editor_full_width") return null;
+      if (cmd === "get_preferences")
+        return { quickCaptureShortcut: "CommandOrControl+Shift+N" };
+      if (cmd === "set_quick_capture_shortcut") return null;
       throw new Error(`unexpected: ${cmd}`);
     });
 
@@ -113,6 +129,9 @@ describe("SettingsDialog", () => {
       calls.push({ cmd, args });
       if (cmd === "get_editor_full_width") return false;
       if (cmd === "set_editor_full_width") return null;
+      if (cmd === "get_preferences")
+        return { quickCaptureShortcut: "CommandOrControl+Shift+N" };
+      if (cmd === "set_quick_capture_shortcut") return null;
       throw new Error(`unexpected: ${cmd}`);
     });
 
@@ -134,6 +153,9 @@ describe("SettingsDialog", () => {
     renderDialog({}, (cmd, args) => {
       if (cmd === "get_editor_full_width") return false;
       if (cmd === "set_editor_full_width") return null;
+      if (cmd === "get_preferences")
+        return { quickCaptureShortcut: "CommandOrControl+Shift+N" };
+      if (cmd === "set_quick_capture_shortcut") return null;
       // tauri-plugin-opener invokes `plugin:opener|open_url` under the hood.
       if (cmd === "plugin:opener|open_url") {
         openCalls.push({ cmd, args });
@@ -164,6 +186,9 @@ describe("SettingsDialog", () => {
     renderDialog({}, (cmd) => {
       if (cmd === "get_editor_full_width") return false;
       if (cmd === "set_editor_full_width") return null;
+      if (cmd === "get_preferences")
+        return { quickCaptureShortcut: "CommandOrControl+Shift+N" };
+      if (cmd === "set_quick_capture_shortcut") return null;
       throw new Error(`unexpected: ${cmd}`);
     });
 
@@ -174,6 +199,67 @@ describe("SettingsDialog", () => {
 
     await waitFor(() =>
       expect(document.documentElement.dataset.editorWidth).toBe("full"),
+    );
+  });
+
+  it("renders the Shortcuts section with the current Quick Capture binding", async () => {
+    renderDialog();
+
+    const recorder = await screen.findByRole("button", {
+      name: "Quick capture shortcut",
+    });
+    await waitFor(() => expect(recorder.textContent).toContain("Ctrl / ⌘"));
+    expect(recorder.textContent).toContain("Shift");
+    expect(recorder.textContent).toContain("N");
+  });
+
+  it("recording a new shortcut calls set_quick_capture_shortcut with the accelerator", async () => {
+    const calls: Array<{ cmd: string; args: Record<string, unknown> }> = [];
+    renderDialog({}, (cmd, args) => {
+      calls.push({ cmd, args });
+      if (cmd === "get_editor_full_width") return false;
+      if (cmd === "set_editor_full_width") return null;
+      if (cmd === "get_preferences")
+        return { quickCaptureShortcut: "CommandOrControl+Shift+N" };
+      if (cmd === "set_quick_capture_shortcut") return null;
+      throw new Error(`unexpected: ${cmd}`);
+    });
+
+    const user = userEvent.setup();
+    const recorder = await screen.findByRole("button", {
+      name: "Quick capture shortcut",
+    });
+    await user.click(recorder);
+    await user.keyboard("{Control>}{Shift>}j{/Shift}{/Control}");
+
+    await waitFor(() => {
+      const set = calls.find((c) => c.cmd === "set_quick_capture_shortcut");
+      expect(set).toBeDefined();
+      expect(set?.args).toMatchObject({ accelerator: "CommandOrControl+Shift+J" });
+    });
+  });
+
+  it("surfaces an error when set_quick_capture_shortcut rejects", async () => {
+    renderDialog({}, (cmd) => {
+      if (cmd === "get_editor_full_width") return false;
+      if (cmd === "set_editor_full_width") return null;
+      if (cmd === "get_preferences")
+        return { quickCaptureShortcut: "CommandOrControl+Shift+N" };
+      if (cmd === "set_quick_capture_shortcut") {
+        throw new Error("Already claimed by the OS");
+      }
+      throw new Error(`unexpected: ${cmd}`);
+    });
+
+    const user = userEvent.setup();
+    const recorder = await screen.findByRole("button", {
+      name: "Quick capture shortcut",
+    });
+    await user.click(recorder);
+    await user.keyboard("{Control>}{Shift>}j{/Shift}{/Control}");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Already claimed by the OS",
     );
   });
 });

@@ -44,7 +44,17 @@ The filesystem is canonical. The frontend never holds notes exclusively in memor
 
 ## Window chrome
 
-OS decorations are disabled (`decorations: false` in `src-tauri/tauri.conf.json`), and the frontend draws its own title bar in `src/shell/TitleBar.tsx` with minimize/maximize/close rendered by `src/shell/WindowControls.tsx`. Window controls use the built-in Tauri window API directly (`@tauri-apps/api/window` → `getCurrentWindow()`), not a Cairn IPC command. The granted capabilities in `src-tauri/capabilities/default.json` are `core:window:allow-start-dragging`, `allow-minimize`, `allow-toggle-maximize`, `allow-close`, `allow-is-maximized`.
+OS decorations are disabled (`decorations: false` in `src-tauri/tauri.conf.json`), and the frontend draws its own title bar in `src/shell/TitleBar.tsx` with minimize/maximize/close rendered by `src/shell/WindowControls.tsx`. Window controls use the built-in Tauri window API directly (`@tauri-apps/api/window` → `getCurrentWindow()`), not a Cairn IPC command. The granted capabilities in `src-tauri/capabilities/default.json` are `core:window:allow-start-dragging`, `allow-minimize`, `allow-toggle-maximize`, `allow-close`, `allow-is-maximized`, `allow-hide`, `allow-show`, `allow-set-focus`.
+
+## Quick Capture window
+
+A second Tauri window (label `quick-capture`) is declared in `tauri.conf.json` alongside `main`. It's 520×300, undecorated, always-on-top, hidden by default, and bundled as a separate Vite entry point (`quick-capture.html` → `src/quick-capture/main.tsx`) so its webview boots with only the dialog — no AppShell, sidebar, or watcher subscriptions.
+
+On every show, `show_quick_capture_window` recenters the window on the monitor currently holding the mouse cursor (not the primary display) so users on multi-monitor setups see it where they're actually working. The monitor is resolved by iterating `app.available_monitors()` and point-testing the cursor; if nothing matches, it falls back to the primary monitor.
+
+The floating window is opened by a system-wide global shortcut (default `CommandOrControl+Shift+N`, configurable from Settings). `tauri-plugin-global-shortcut` delivers the keypress to the Rust handler in `lib.rs`, which checks whether any Cairn window already has OS focus — if so it returns without doing anything (the user is already inside Cairn and a floating dialog on top would be disruptive). Otherwise it calls `show_quick_capture_window`: it shows + focuses the window and emits the `quick-capture:open` event the React side listens for to reset form state. On submit or Esc, the React side calls `hide_quick_capture` to dismiss without closing — the window persists so the next shortcut press reuses it.
+
+On close requests (Cmd/Ctrl+W, X button), the setup hook intercepts the event and hides the window instead so the shortcut stays live.
 
 ## Module boundaries
 
@@ -55,6 +65,7 @@ Each module is a compilation unit with a single responsibility and a narrow publ
 | `error`       | `AppError`, `AppResult<T>`; IPC-safe serialization          | —          |
 | `vault`       | Vault directory lifecycle, `.cairn/` bootstrap, `VaultSummary`, config read/write | `error` |
 | `registry`    | App-level registry of known vaults; persists to `app_data_dir/registry.json` | `error`, `vault` |
+| `preferences` | App-level user preferences (Quick Capture shortcut); persists to `app_data_dir/preferences.json` | `error` |
 | `md`          | YAML frontmatter parse + serialize (preserving unknowns); preview + title derivation | `error` |
 | `fs`          | Atomic write, `list_tree`, `create_note`, `move_note`, `read_note`, `write_note` | `error`, `md`, `vault` |
 | `watcher`     | Debounced vault change events; filters `.cairn/`            | `error`, `vault` |
@@ -114,7 +125,7 @@ Commands are declared in `src-tauri/src/commands.rs` and proxied from the fronte
 | `close_active_vault` | —                     | `void`                   | clears active; app returns to the picker |
 | `forget_vault`     | `{ path }`              | `void`                   | removes from registry (on-disk vault untouched) |
 | `list_tree`        | —                       | `Tree`                   | uses the active vault; returns `{ captures, someday, projects, trash }` |
-| `create_capture`   | `{ body? }`             | `NoteRef`                | writes `Captures/<ulid>.md` with default frontmatter |
+| `create_capture`   | `{ title?, body? }`     | `NoteRef`                | writes `Captures/<ulid>.md` with default frontmatter; title goes into `title` frontmatter field (trimmed; blank dropped) |
 | `move_note`        | `{ src, target }`       | `string` (final path)    | `target` is `"captures"`, `"someday"`, or a vault-relative path; collision-renames on conflict |
 | `read_note`       | `{ path }`              | `ParsedNote`             | path must be inside the active vault |
 | `write_note`      | `{ path, note }`        | `void`                   | atomic; preserves unknown frontmatter keys |
@@ -122,12 +133,12 @@ Commands are declared in `src-tauri/src/commands.rs` and proxied from the fronte
 | `create_project`  | `{ name }`              | `string` (project path)  | creates `Projects/<name>/Actions/` |
 | `rename_project`  | `{ oldPath, newName }`  | `string` (new project path) | sanitizes name; errors on collision; rewrites reminder/action-order paths; triggers scheduler rebuild |
 | `delete_project`  | `{ path }`              | `void`                   | soft-delete: moves folder to `.cairn/trash/` as one entry, purges reminder/action-order refs |
-| `create_action`   | `{ projectPath, body? }` | `NoteRef`               | writes action with `status: open` |
+| `create_action`   | `{ projectPath, title?, body? }` | `NoteRef`        | writes action with `status: open`; title in frontmatter |
 | `complete_action` | `{ path, note? }`       | `string` (archive path)  | sets `completed_at` + moves to `Actions/Archive/` |
 | `list_home_actions` | —                     | `HomeAction[]`           | flat list of open actions, ordered by state.json |
 | `reorder_actions` | `{ order: string[] }`   | `string[]`               | persists `actionOrder` to state.json |
 | `list_folder`     | `{ path }`              | `FolderContents`         | single-folder listing (markdown files + direct subfolders), excludes hidden + `assets/`; callers filter context-specific dirs |
-| `create_someday`  | `{ body? }`             | `NoteRef`                | writes a new markdown note to `Someday/` |
+| `create_someday`  | `{ title?, body? }`     | `NoteRef`                | writes a new markdown note to `Someday/` |
 | `set_remind_at`   | `{ path, remindAt: string \| null }` | `void`     | patches `remind_at` frontmatter; triggers scheduler rebuild |
 | `list_reminders`  | —                       | `ReminderEntry[]`        | current reminder index (pending entries only) |
 | `list_tags`       | —                       | `TagInfo[]`              | declared + ad-hoc tags, with usage counts |
@@ -141,6 +152,11 @@ Commands are declared in `src-tauri/src/commands.rs` and proxied from the fronte
 | `search_notes`    | `{ query, limit? }`     | `SearchHit[]`            | substring search over titles + bodies |
 | `get_editor_full_width` | —                 | `boolean`                | reads `editorFullWidth` from the active vault's `.cairn/config.json`; `false` on legacy configs missing the field |
 | `set_editor_full_width` | `{ value: bool }` | `void`                   | persists the editor layout preference into the active vault's config |
+| `get_preferences` | —                       | `Preferences`            | returns user-level preferences (currently `{ quickCaptureShortcut }`) |
+| `set_quick_capture_shortcut` | `{ accelerator }` | `void`               | validates + registers the new accelerator, unregisters the old, persists to `preferences.json`. `AppError::Shortcut` on failure leaves the previous binding live |
+| `show_quick_capture` | —                    | `void`                   | shows + focuses the Quick Capture window and emits `quick-capture:open` |
+| `hide_quick_capture` | —                    | `void`                   | hides (not closes) the Quick Capture window |
+| `focus_main_window` | —                     | `void`                   | brings the main window to the foreground (used by QC's no-vault empty state) |
 | `set_tag` *(M7)*  | `{ path, tags: string[] }` | `void`                |               |
 | `trash_note` *(M8)*| `{ path }`              | `void`                   |               |
 | `restore_trash` *(M8)*| `{ path }`          | `void`                   | collision-renames on restore |
@@ -153,14 +169,23 @@ Commands are declared in `src-tauri/src/commands.rs` and proxied from the fronte
 |---------------|-------------------------------|-------------|
 | `vault.changed` | `{ paths: string[] }`       | `fs` watcher, debounced 150ms |
 | `reminder_due` | `{ path, title, remindAt }` | `reminders` scheduler |
+| `quick-capture:open` | —                       | `lib.rs` on global-shortcut press / `show_quick_capture` command |
 
-### Global shortcuts (frontend)
+### In-app shortcuts (DOM keydown — main window only)
 
 | Keys       | Action                                              |
 |------------|-----------------------------------------------------|
 | Ctrl/Cmd+K | Toggle the command palette (always global) |
 | Ctrl/Cmd+N | New capture + navigate to Captures (ignored while typing) |
 | `?`        | Open the keyboard shortcuts sheet (ignored while typing) |
+
+### System-wide shortcuts
+
+Registered via `tauri-plugin-global-shortcut` in `lib.rs`'s setup hook. These fire even when Cairn does not own focus, as long as the process is running.
+
+| Keys (default)            | Action                                          |
+|---------------------------|-------------------------------------------------|
+| CommandOrControl+Shift+N  | Open Quick Capture (configurable in Settings)   |
 
 Frontend subscribes to these in `src/lib/tauri-events.ts` and invalidates the corresponding TanStack Query keys.
 

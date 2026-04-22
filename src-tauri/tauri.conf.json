@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Cairn",
         "width": 1200,
         "height": 780,
@@ -19,6 +20,22 @@
         "minHeight": 560,
         "decorations": false,
         "resizable": true,
+        "transparent": false,
+        "backgroundColor": "#0e1013"
+      },
+      {
+        "label": "quick-capture",
+        "url": "quick-capture.html",
+        "title": "Quick Capture",
+        "width": 520,
+        "height": 300,
+        "decorations": false,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "center": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "focus": true,
         "transparent": false,
         "backgroundColor": "#0e1013"
       }

@@ -12,6 +12,17 @@ export default defineConfig(async () => ({
     },
   },
   clearScreen: false,
+  // Two entry HTML files: the main window and the lightweight Quick Capture
+  // floating window. Keeping them separate keeps the floating window's bundle
+  // free of AppShell, routing, watcher subscriptions, etc.
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, "index.html"),
+        "quick-capture": path.resolve(__dirname, "quick-capture.html"),
+      },
+    },
+  },
   server: {
     port: 1420,
     strictPort: true,

@@ -115,12 +115,21 @@ pub fn write_note(path: &Path, note: &ParsedNote) -> AppResult<()> {
     atomic_write(path, serialized.as_bytes())
 }
 
-/// Create a new markdown note in `dir` with default frontmatter (id + created_at)
-/// and optional body. Filename is `<ulid>.md` so sort order matches creation
-/// order and there are no collisions.
+/// Create a new markdown note in `dir` with default frontmatter (id + created_at),
+/// an optional title (written to the `title` frontmatter field), and optional
+/// body. Filename is `<ulid>.md` so sort order matches creation order and
+/// there are no collisions.
+///
+/// A blank-or-whitespace title is treated as absent and is not written to
+/// frontmatter — this keeps empty title fields out of the YAML so the file
+/// stays tidy when callers pass `Some("")`.
 ///
 /// Returns the `NoteRef` that the UI can render immediately.
-pub fn create_note(dir: &Path, body: Option<&str>) -> AppResult<NoteRef> {
+pub fn create_note(
+    dir: &Path,
+    title: Option<&str>,
+    body: Option<&str>,
+) -> AppResult<NoteRef> {
     fs::create_dir_all(dir)?;
     let id = Ulid::new().to_string();
     let filename = format!("{id}.md");
@@ -135,6 +144,7 @@ pub fn create_note(dir: &Path, body: Option<&str>) -> AppResult<NoteRef> {
     let note = ParsedNote {
         frontmatter: md::Frontmatter {
             id: Some(id.clone()),
+            title: normalize_title(title),
             created_at: Some(now),
             ..Default::default()
         },
@@ -150,6 +160,17 @@ pub fn create_note(dir: &Path, body: Option<&str>) -> AppResult<NoteRef> {
         tags: Vec::new(),
         remind_at: None,
         deadline: None,
+    })
+}
+
+fn normalize_title(title: Option<&str>) -> Option<String> {
+    title.and_then(|t| {
+        let trimmed = t.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
     })
 }
 
@@ -300,8 +321,13 @@ fn rewrite_project_path_prefix(
 
 /// Create a new action note under `project/Actions/` with id + created_at
 /// frontmatter. Like `create_note` but sets `status: open` since actions
-/// carry GTD state from the moment they exist.
-pub fn create_action(project: &Path, body: Option<&str>) -> AppResult<NoteRef> {
+/// carry GTD state from the moment they exist. A blank-or-whitespace title
+/// is treated as absent.
+pub fn create_action(
+    project: &Path,
+    title: Option<&str>,
+    body: Option<&str>,
+) -> AppResult<NoteRef> {
     let actions_dir = project.join(ACTIONS_DIR);
     fs::create_dir_all(&actions_dir)?;
     let id = Ulid::new().to_string();
@@ -316,6 +342,7 @@ pub fn create_action(project: &Path, body: Option<&str>) -> AppResult<NoteRef> {
     let note = md::ParsedNote {
         frontmatter: md::Frontmatter {
             id: Some(id),
+            title: normalize_title(title),
             created_at: Some(now),
             status: Some(md::Status::Open),
             ..Default::default()
@@ -725,7 +752,7 @@ mod tests {
     #[test]
     fn create_note_writes_frontmatter_with_id_and_created_at() {
         let (_vault, root) = setup_vault();
-        let note_ref = create_note(&root.join(CAPTURES_DIR), Some("hello")).unwrap();
+        let note_ref = create_note(&root.join(CAPTURES_DIR), None, Some("hello")).unwrap();
 
         let raw = fs::read_to_string(&note_ref.path).unwrap();
         assert!(raw.contains("id:"));
@@ -737,9 +764,9 @@ mod tests {
     #[test]
     fn list_tree_reports_captures_newest_first() {
         let (_vault, root) = setup_vault();
-        let first = create_note(&root.join(CAPTURES_DIR), Some("# First")).unwrap();
+        let first = create_note(&root.join(CAPTURES_DIR), None, Some("# First")).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(5));
-        let second = create_note(&root.join(CAPTURES_DIR), Some("# Second")).unwrap();
+        let second = create_note(&root.join(CAPTURES_DIR), None, Some("# Second")).unwrap();
 
         let tree = list_tree(&root).unwrap();
         assert_eq!(tree.captures.len(), 2);
@@ -752,7 +779,7 @@ mod tests {
     #[test]
     fn list_tree_excludes_cairn_dir() {
         let (_vault, root) = setup_vault();
-        create_note(&root.join(CAPTURES_DIR), Some("real note")).unwrap();
+        create_note(&root.join(CAPTURES_DIR), None, Some("real note")).unwrap();
         // A stray .md inside .cairn/ should NOT show up in captures.
         fs::write(root.join(CAIRN_DIR).join("stray.md"), "---\ntitle: stray\n---\n").unwrap();
 
@@ -770,9 +797,9 @@ mod tests {
         let projects_root = root.join(PROJECTS_DIR);
         fs::create_dir_all(projects_root.join("Alpha").join(ACTIONS_DIR)).unwrap();
         fs::create_dir_all(projects_root.join("Beta").join(ACTIONS_DIR)).unwrap();
-        create_note(&projects_root.join("Alpha").join(ACTIONS_DIR), Some("a1")).unwrap();
-        create_note(&projects_root.join("Alpha").join(ACTIONS_DIR), Some("a2")).unwrap();
-        create_note(&projects_root.join("Beta").join(ACTIONS_DIR), Some("b1")).unwrap();
+        create_note(&projects_root.join("Alpha").join(ACTIONS_DIR), None, Some("a1")).unwrap();
+        create_note(&projects_root.join("Alpha").join(ACTIONS_DIR), None, Some("a2")).unwrap();
+        create_note(&projects_root.join("Beta").join(ACTIONS_DIR), None, Some("b1")).unwrap();
 
         let tree = list_tree(&root).unwrap();
         assert_eq!(tree.projects.len(), 2);
@@ -851,8 +878,8 @@ mod tests {
         let (_vault, root) = setup_vault();
         let project = root.join(PROJECTS_DIR).join("X");
         fs::create_dir_all(project.join(ACTIONS_DIR).join(ARCHIVE_DIR)).unwrap();
-        create_note(&project.join(ACTIONS_DIR), Some("open one")).unwrap();
-        create_note(&project.join(ACTIONS_DIR).join(ARCHIVE_DIR), Some("done one")).unwrap();
+        create_note(&project.join(ACTIONS_DIR), None, Some("open one")).unwrap();
+        create_note(&project.join(ACTIONS_DIR).join(ARCHIVE_DIR), None, Some("done one")).unwrap();
 
         let tree = list_tree(&root).unwrap();
         assert_eq!(tree.projects[0].actions.len(), 1);
@@ -861,7 +888,7 @@ mod tests {
     #[test]
     fn move_note_within_vault_succeeds() {
         let (_vault, root) = setup_vault();
-        let note = create_note(&root.join(CAPTURES_DIR), Some("body")).unwrap();
+        let note = create_note(&root.join(CAPTURES_DIR), None, Some("body")).unwrap();
         let filename = note.path.file_name().unwrap().to_owned();
         let dst = root.join(SOMEDAY_DIR).join(&filename);
 
@@ -890,7 +917,7 @@ mod tests {
     #[test]
     fn move_note_rejects_destination_outside_vault() {
         let (_vault, root) = setup_vault();
-        let note = create_note(&root.join(CAPTURES_DIR), Some("body")).unwrap();
+        let note = create_note(&root.join(CAPTURES_DIR), None, Some("body")).unwrap();
         let escape = TempDir::new().unwrap();
         let result = move_note(&root, &note.path, &escape.path().join("stolen.md"));
         assert!(matches!(result, Err(AppError::NotWritable(_))));
@@ -937,7 +964,7 @@ mod tests {
     fn create_action_sets_open_status() {
         let (_vault, root) = setup_vault();
         let project = create_project(&root, "P").unwrap();
-        let action = create_action(&project, Some("first step")).unwrap();
+        let action = create_action(&project, None, Some("first step")).unwrap();
 
         let reread = read_note(&action.path).unwrap();
         assert_eq!(reread.frontmatter.status, Some(md::Status::Open));
@@ -949,7 +976,7 @@ mod tests {
     fn complete_action_moves_to_archive_and_sets_frontmatter() {
         let (_vault, root) = setup_vault();
         let project = create_project(&root, "P").unwrap();
-        let action = create_action(&project, Some("todo item")).unwrap();
+        let action = create_action(&project, None, Some("todo item")).unwrap();
 
         let archived = complete_action(&root, &action.path, Some("felt good to ship")).unwrap();
 
@@ -970,7 +997,7 @@ mod tests {
     fn complete_action_without_note_omits_field() {
         let (_vault, root) = setup_vault();
         let project = create_project(&root, "P").unwrap();
-        let action = create_action(&project, None).unwrap();
+        let action = create_action(&project, None, None).unwrap();
 
         let archived = complete_action(&root, &action.path, None).unwrap();
         let reread = read_note(&archived).unwrap();
@@ -980,7 +1007,7 @@ mod tests {
     #[test]
     fn complete_action_rejects_non_action_file() {
         let (_vault, root) = setup_vault();
-        let capture = create_note(&root.join(CAPTURES_DIR), Some("x")).unwrap();
+        let capture = create_note(&root.join(CAPTURES_DIR), None, Some("x")).unwrap();
         let err = complete_action(&root, &capture.path, None).unwrap_err();
         assert!(matches!(err, AppError::Io(_)));
     }
@@ -990,7 +1017,7 @@ mod tests {
         // Regression guard: Archive/ must not appear in the default Actions list.
         let (_vault, root) = setup_vault();
         let project = create_project(&root, "P").unwrap();
-        let a1 = create_action(&project, Some("open")).unwrap();
+        let a1 = create_action(&project, None, Some("open")).unwrap();
         complete_action(&root, &a1.path, None).unwrap();
 
         let tree = list_tree(&root).unwrap();
@@ -1068,7 +1095,7 @@ mod tests {
     fn rename_project_moves_directory_and_preserves_note_contents() {
         let (_vault, root) = setup_vault();
         let project = create_project(&root, "Alpha").unwrap();
-        let action = create_action(&project, Some("first step")).unwrap();
+        let action = create_action(&project, None, Some("first step")).unwrap();
         let original = fs::read_to_string(&action.path).unwrap();
 
         let new_path = rename_project(&root, &project, "Beta").unwrap();
@@ -1216,8 +1243,8 @@ mod tests {
     fn soft_delete_project_moves_entire_folder_to_trash_as_one_entry() {
         let (_vault, root) = setup_vault();
         let project = create_project(&root, "Alpha").unwrap();
-        create_action(&project, Some("a1")).unwrap();
-        create_action(&project, Some("a2")).unwrap();
+        create_action(&project, None, Some("a1")).unwrap();
+        create_action(&project, None, Some("a2")).unwrap();
         fs::write(project.join("doc.md"), "---\n---\n\ndoc").unwrap();
 
         soft_delete_project(&root, &project).unwrap();
@@ -1311,5 +1338,58 @@ mod tests {
         let ghost = root.join(PROJECTS_DIR).join("Ghost");
         let err = soft_delete_project(&root, &ghost).unwrap_err();
         assert!(matches!(err, AppError::PathNotFound(_)));
+    }
+
+    // ─── title handling ─────────────────────────────────────────────────
+
+    #[test]
+    fn create_note_writes_title_into_frontmatter() {
+        let (_vault, root) = setup_vault();
+        let note_ref = create_note(
+            &root.join(CAPTURES_DIR),
+            Some("Follow up with Lena"),
+            Some("body text"),
+        )
+        .unwrap();
+
+        let reread = read_note(&note_ref.path).unwrap();
+        assert_eq!(
+            reread.frontmatter.title.as_deref(),
+            Some("Follow up with Lena"),
+        );
+        assert_eq!(reread.body, "body text");
+    }
+
+    #[test]
+    fn create_note_trims_whitespace_title() {
+        let (_vault, root) = setup_vault();
+        let note_ref =
+            create_note(&root.join(CAPTURES_DIR), Some("  spaced  "), None).unwrap();
+
+        let reread = read_note(&note_ref.path).unwrap();
+        assert_eq!(reread.frontmatter.title.as_deref(), Some("spaced"));
+    }
+
+    #[test]
+    fn create_note_blank_title_is_dropped() {
+        let (_vault, root) = setup_vault();
+        let note_ref = create_note(&root.join(CAPTURES_DIR), Some("   "), None).unwrap();
+
+        let reread = read_note(&note_ref.path).unwrap();
+        assert!(reread.frontmatter.title.is_none());
+    }
+
+    #[test]
+    fn create_action_writes_title_into_frontmatter() {
+        let (_vault, root) = setup_vault();
+        let project = create_project(&root, "P").unwrap();
+        let action = create_action(&project, Some("Call the lawyer"), None).unwrap();
+
+        let reread = read_note(&action.path).unwrap();
+        assert_eq!(
+            reread.frontmatter.title.as_deref(),
+            Some("Call the lawyer"),
+        );
+        assert_eq!(reread.frontmatter.status, Some(md::Status::Open));
     }
 }
