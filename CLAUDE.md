@@ -113,6 +113,7 @@ Cairn/
     tauri.conf.json
     Cargo.toml
   tests/setup.ts               ← Vitest setup, Tauri IPC mock defaults
+  sample/                      ← dev/demo vault (not bundled). Open this in Cairn to smoke-test features.
   package.json
   CLAUDE.md                    ← this file
 ```
