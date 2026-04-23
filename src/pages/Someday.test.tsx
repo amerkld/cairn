@@ -161,7 +161,7 @@ describe("Someday page", () => {
     expect(navigate).toHaveBeenCalledWith({
       page: "editor",
       notePath: "/v/Someday/new.md",
-      returnTo: "someday",
+      returnTo: { page: "someday" },
     });
   });
 });

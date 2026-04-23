@@ -85,7 +85,7 @@ export function EditorPage({ notePath, returnTo }: EditorPageProps) {
     }
     setDirty(false);
     trashNote.mutate(notePath, {
-      onSuccess: () => route.navigate({ page: returnTo }),
+      onSuccess: () => route.navigate(returnTo),
     });
   }
 
@@ -108,7 +108,7 @@ export function EditorPage({ notePath, returnTo }: EditorPageProps) {
       <Toolbar
         onBack={() => {
           flushSave();
-          route.navigate({ page: returnTo });
+          route.navigate(returnTo);
         }}
         onTrash={trashAndExit}
         isTrashing={trashNote.isPending}

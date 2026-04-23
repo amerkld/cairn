@@ -318,7 +318,7 @@ function ActionRow({
           route.navigate({
             page: "editor",
             notePath: entry.action.path,
-            returnTo: "home",
+            returnTo: { page: "home" },
           })
         }
         className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left"

@@ -190,7 +190,7 @@ export function CommandPalette({
                         route.navigate({
                           page: "editor",
                           notePath: hit.path,
-                          returnTo: "home",
+                          returnTo: { page: "home" },
                         }),
                       )
                     }

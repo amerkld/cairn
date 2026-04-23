@@ -11,8 +11,16 @@ import { createContext, useContext } from "react";
 
 export type PageKey = "home" | "captures" | "someday" | "trash" | "project" | "editor";
 
-/** Pages that can be "returned to" from the editor — simple routes with no required context. */
-export type ReturnableRoute = "home" | "captures" | "someday" | "trash";
+/**
+ * Routes the editor can return to. Each variant is a complete route descriptor
+ * so a returnable target can carry its own context (e.g. a project's path).
+ */
+export type ReturnableRoute =
+  | { page: "home" }
+  | { page: "captures" }
+  | { page: "someday" }
+  | { page: "trash" }
+  | { page: "project"; projectPath: string };
 
 export type RouteState =
   | { page: "home" }

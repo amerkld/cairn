@@ -70,7 +70,7 @@ describe("ProjectPage", () => {
     expect(navigate).toHaveBeenCalledWith({
       page: "editor",
       notePath: "/v/Projects/P/Actions/new.md",
-      returnTo: "home",
+      returnTo: { page: "project", projectPath: "/v/Projects/P" },
     });
   });
 
@@ -110,7 +110,52 @@ describe("ProjectPage", () => {
     expect(navigate).toHaveBeenCalledWith({
       page: "editor",
       notePath: "/v/Projects/P/Actions/a.md",
-      returnTo: "home",
+      returnTo: { page: "project", projectPath: "/v/Projects/P" },
+    });
+  });
+
+  it("opens a project doc with returnTo set to the project", async () => {
+    const navigate = vi.fn();
+    mockIPC((cmd) => {
+      if (cmd === "list_tree") {
+        return {
+          ...emptyTree,
+          projects: [
+            {
+              name: "P",
+              path: "/v/Projects/P",
+              actions: [],
+              subdirectories: [],
+            },
+          ],
+        };
+      }
+      if (cmd === "list_folder") {
+        return {
+          files: [
+            {
+              path: "/v/Projects/P/overview.md",
+              title: "Overview",
+              preview: "",
+              createdAt: "2026-04-21T00:00:00Z",
+              tags: [],
+            },
+          ],
+          folders: [],
+        };
+      }
+      throw new Error(`unexpected ${cmd}`);
+    });
+
+    render(wrap(<ProjectPage projectPath="/v/Projects/P" />, navigate));
+
+    const row = await screen.findByText("Overview");
+    await userEvent.setup().click(row);
+
+    expect(navigate).toHaveBeenCalledWith({
+      page: "editor",
+      notePath: "/v/Projects/P/overview.md",
+      returnTo: { page: "project", projectPath: "/v/Projects/P" },
     });
   });
 

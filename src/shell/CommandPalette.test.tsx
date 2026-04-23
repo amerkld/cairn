@@ -123,7 +123,7 @@ describe("CommandPalette", () => {
     expect(navigate).toHaveBeenCalledWith({
       page: "editor",
       notePath: "/v/Captures/notes.md",
-      returnTo: "home",
+      returnTo: { page: "home" },
     });
   });
 });

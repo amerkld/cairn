@@ -71,7 +71,7 @@ export function ProjectPage({ projectPath }: ProjectPageProps) {
           route.navigate({
             page: "editor",
             notePath: note.path,
-            returnTo: "home",
+            returnTo: { page: "project", projectPath: project.path },
           });
         },
       },
@@ -306,6 +306,7 @@ function ActionsSection({
             <ActionListRow
               key={action.path}
               action={action}
+              projectPath={project.path}
               isLast={i === visibleActions.length - 1}
             />
           ))}
@@ -395,6 +396,7 @@ function DocsSection({
             <DocRow
               key={file.path}
               file={file}
+              projectPath={project.path}
               isLast={i === filesCount - 1}
             />
           ))}
@@ -503,13 +505,25 @@ function FolderRow({
   );
 }
 
-function DocRow({ file, isLast }: { file: NoteRef; isLast: boolean }) {
+function DocRow({
+  file,
+  projectPath,
+  isLast,
+}: {
+  file: NoteRef;
+  projectPath: string;
+  isLast: boolean;
+}) {
   const route = useRoute();
   return (
     <button
       type="button"
       onClick={() =>
-        route.navigate({ page: "editor", notePath: file.path, returnTo: "home" })
+        route.navigate({
+          page: "editor",
+          notePath: file.path,
+          returnTo: { page: "project", projectPath },
+        })
       }
       className={cn(
         "group flex w-full items-center gap-3 px-4 py-2.5 text-left",
@@ -542,9 +556,11 @@ function DocRow({ file, isLast }: { file: NoteRef; isLast: boolean }) {
 
 function ActionListRow({
   action,
+  projectPath,
   isLast,
 }: {
   action: NoteRef;
+  projectPath: string;
   isLast: boolean;
 }) {
   const route = useRoute();
@@ -552,7 +568,11 @@ function ActionListRow({
     <button
       type="button"
       onClick={() =>
-        route.navigate({ page: "editor", notePath: action.path, returnTo: "home" })
+        route.navigate({
+          page: "editor",
+          notePath: action.path,
+          returnTo: { page: "project", projectPath },
+        })
       }
       className={cn(
         "group flex w-full items-center gap-3 px-4 py-3 text-left",
