@@ -47,7 +47,7 @@ export function Captures() {
   );
 
   function openNote(notePath: string) {
-    route.navigate({ page: "editor", notePath, returnTo: "captures" });
+    route.navigate({ page: "editor", notePath, returnTo: { page: "captures" } });
   }
 
   return (

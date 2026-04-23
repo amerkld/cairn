@@ -54,7 +54,11 @@ function wrap(children: ReactNode, navigate = vi.fn()) {
       mutations: { retry: false },
     },
   });
-  const state: RouteState = { page: "editor", notePath: "/v/a.md", returnTo: "captures" };
+  const state: RouteState = {
+    page: "editor",
+    notePath: "/v/a.md",
+    returnTo: { page: "captures" },
+  };
   return (
     <QueryClientProvider client={client}>
       <RouteContext.Provider value={{ state, navigate }}>{children}</RouteContext.Provider>
@@ -74,7 +78,7 @@ describe("EditorPage", () => {
       throw new Error(`unexpected ${cmd}`);
     });
 
-    render(wrap(<EditorPage notePath="/v/a.md" returnTo="captures" />));
+    render(wrap(<EditorPage notePath="/v/a.md" returnTo={{ page: "captures" }} />));
 
     const editor = await screen.findByTestId("mock-editor");
     await waitFor(() => expect(editor).toHaveValue("This is a body.\n"));
@@ -94,7 +98,7 @@ describe("EditorPage", () => {
       throw new Error(`unexpected ${cmd}`);
     });
 
-    render(wrap(<EditorPage notePath="/v/a.md" returnTo="captures" />));
+    render(wrap(<EditorPage notePath="/v/a.md" returnTo={{ page: "captures" }} />));
     const editor = await screen.findByTestId("mock-editor");
     // Type body, then blur to trigger flushSave.
     fireEvent.change(editor, { target: { value: "Hi" } });
@@ -119,7 +123,7 @@ describe("EditorPage", () => {
       throw new Error(`unexpected ${cmd}`);
     });
 
-    render(wrap(<EditorPage notePath="/v/a.md" returnTo="captures" />));
+    render(wrap(<EditorPage notePath="/v/a.md" returnTo={{ page: "captures" }} />));
     const editor = await screen.findByTestId("mock-editor");
     fireEvent.change(editor, { target: { value: "Hi" } });
 
@@ -141,7 +145,7 @@ describe("EditorPage", () => {
       throw new Error(`unexpected ${cmd}`);
     });
 
-    render(wrap(<EditorPage notePath="/v/a.md" returnTo="captures" />, navigate));
+    render(wrap(<EditorPage notePath="/v/a.md" returnTo={{ page: "captures" }} />, navigate));
     const editor = await screen.findByTestId("mock-editor");
     fireEvent.change(editor, { target: { value: "X" } });
 
@@ -150,6 +154,35 @@ describe("EditorPage", () => {
 
     await waitFor(() => expect(writes.length).toBeGreaterThan(0));
     expect(navigate).toHaveBeenCalledWith({ page: "captures" });
+  });
+
+  it("returns to the originating project when Back is clicked on a project-opened note", async () => {
+    const navigate = vi.fn();
+    mockIPC((cmd) => {
+      if (cmd === "read_note") {
+        return { frontmatter: { title: "", tags: [] }, body: "" };
+      }
+      if (cmd === "write_note") return null;
+      throw new Error(`unexpected ${cmd}`);
+    });
+
+    render(
+      wrap(
+        <EditorPage
+          notePath="/v/Proj/a.md"
+          returnTo={{ page: "project", projectPath: "/v/Proj" }}
+        />,
+        navigate,
+      ),
+    );
+    await screen.findByTestId("mock-editor");
+
+    await userEvent.setup().click(screen.getByRole("button", { name: /Back/ }));
+
+    expect(navigate).toHaveBeenCalledWith({
+      page: "project",
+      projectPath: "/v/Proj",
+    });
   });
 
   it("image paste calls paste_image with the file's extension", async () => {
@@ -166,7 +199,7 @@ describe("EditorPage", () => {
       throw new Error(`unexpected ${cmd}`);
     });
 
-    render(wrap(<EditorPage notePath="/v/a.md" returnTo="captures" />));
+    render(wrap(<EditorPage notePath="/v/a.md" returnTo={{ page: "captures" }} />));
     await screen.findByTestId("mock-editor");
 
     const file = new File([new Uint8Array([1, 2, 3])], "img.png", { type: "image/png" });
@@ -189,7 +222,7 @@ describe("EditorPage", () => {
       throw new Error(`unexpected ${cmd}`);
     });
 
-    render(wrap(<EditorPage notePath="/v/a.md" returnTo="captures" />));
+    render(wrap(<EditorPage notePath="/v/a.md" returnTo={{ page: "captures" }} />));
 
     expect(await screen.findByText("Couldn't open this note")).toBeInTheDocument();
   });

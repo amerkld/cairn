@@ -48,7 +48,7 @@ export function ReminderToasts() {
                 route.navigate({
                   page: "editor",
                   notePath: toast.path,
-                  returnTo: "home",
+                  returnTo: { page: "home" },
                 });
               }}
               className="truncate text-left text-sm font-medium text-fg-primary hover:underline"

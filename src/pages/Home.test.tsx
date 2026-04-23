@@ -163,7 +163,7 @@ describe("Home page", () => {
     expect(navigate).toHaveBeenCalledWith({
       page: "editor",
       notePath: "/v/Projects/P/Actions/a.md",
-      returnTo: "home",
+      returnTo: { page: "home" },
     });
   });
 

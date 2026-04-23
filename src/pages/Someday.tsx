@@ -73,7 +73,7 @@ export function Someday() {
         route.navigate({
           page: "editor",
           notePath: note.path,
-          returnTo: "someday",
+          returnTo: { page: "someday" },
         });
       },
     });
@@ -172,7 +172,7 @@ function SomedayRow({
           route.navigate({
             page: "editor",
             notePath: note.path,
-            returnTo: "someday",
+            returnTo: { page: "someday" },
           })
         }
         className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left"
