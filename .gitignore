@@ -22,3 +22,9 @@ coverage
 
 # OS
 Thumbs.db
+
+# Dev sample vault — the markdown is committed, but Cairn's per-user
+# state (trash, project recency, preferences) and pasted-asset folders
+# that accumulate during local testing are not.
+sample/.cairn/
+sample/**/assets/
