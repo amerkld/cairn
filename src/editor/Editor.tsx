@@ -27,15 +27,27 @@ import {
 } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { livePreview } from "./live-preview";
+import {
+  noteDirectory,
+  noteDirectoryCompartment,
+} from "./live-preview/facets";
 import { cairnEditorTheme } from "./editor-theme";
 
 const SUPPORTED_IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp"]);
+
+function dirnameOf(path: string): string {
+  if (!path) return "";
+  const idx = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return idx >= 0 ? path.slice(0, idx) : "";
+}
 
 export interface EditorProps {
   /** Initial body. Not a controlled value — remote refetches sync via `remoteBody`. */
   initialBody: string;
   /** When this identity changes, the editor resets to the new content. */
   resetKey: string;
+  /** Absolute path of the note, used to resolve relative image URLs via the asset protocol. */
+  notePath?: string;
   onChange: (next: string) => void;
   onBlur?: () => void;
   onImagePaste?: (file: File) => Promise<string | null>;
@@ -44,6 +56,7 @@ export interface EditorProps {
 export function Editor({
   initialBody,
   resetKey,
+  notePath,
   onChange,
   onBlur,
   onImagePaste,
@@ -69,6 +82,7 @@ export function Editor({
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         markdown({ base: markdownLanguage, addKeymap: true }),
         livePreview,
+        noteDirectoryCompartment.of(noteDirectory.of(dirnameOf(notePath ?? ""))),
         cairnEditorTheme,
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
@@ -111,6 +125,18 @@ export function Editor({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetKey]);
+
+  // Reconfigure the note directory facet whenever the note path changes
+  // so image widgets can resolve relative URLs against the correct root.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: noteDirectoryCompartment.reconfigure(
+        noteDirectory.of(dirnameOf(notePath ?? "")),
+      ),
+    });
+  }, [notePath]);
 
   async function handlePaste(event: ReactClipboardEvent<HTMLDivElement>) {
     if (!onImagePasteRef.current) return;

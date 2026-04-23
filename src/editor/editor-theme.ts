@@ -122,6 +122,138 @@ const cairnTheme = EditorView.theme(
       top: "50%",
       borderTop: "1px solid hsl(var(--border-subtle))",
     },
+    // Blockquote — left border + muted italic text. The `>` marker is
+    // hidden off-cursor so the content sits flush against the border.
+    ".cm-rendered-blockquote": {
+      borderLeft: "3px solid hsl(var(--border-strong))",
+      paddingLeft: "calc(1.5rem - 3px)",
+      color: "hsl(var(--fg-secondary))",
+      fontStyle: "italic",
+    },
+    // List items — no padding yet at the line level; markers are styled
+    // below. Indent for nested lists comes from the leading whitespace in
+    // the source, which CM renders as-is.
+    ".cm-rendered-list-marker": {
+      color: "hsl(var(--accent))",
+      fontWeight: "500",
+    },
+    // Off-cursor bullet widget for unordered lists. The source text still
+    // contains `-` / `*` / `+` (round-trips to disk unchanged); this
+    // decoration visually swaps the character for a real bullet.
+    ".cm-rendered-list-bullet": {
+      color: "hsl(var(--accent))",
+      fontWeight: "500",
+    },
+    // Inline link — accent-coloured text, subtle underline. Off-cursor the
+    // brackets and URL are hidden so only this styled text is visible.
+    ".cm-rendered-link": {
+      color: "hsl(var(--accent))",
+      textDecoration: "underline",
+      textDecorationColor: "hsl(var(--accent) / 0.45)",
+      textUnderlineOffset: "2px",
+      cursor: "pointer",
+    },
+    // Strikethrough (`~~x~~`). Markers themselves are hidden off-cursor by
+    // the shared inline-mark logic; this rule decorates the text span.
+    ".cm-rendered-strikethrough": {
+      textDecoration: "line-through",
+      textDecorationColor: "hsl(var(--fg-muted))",
+      color: "hsl(var(--fg-muted))",
+    },
+    // GFM task-list checkbox widget. Aligns baseline with surrounding text
+    // and uses the accent colour when checked.
+    ".cm-rendered-task-checkbox": {
+      display: "inline-flex",
+      alignItems: "center",
+      verticalAlign: "baseline",
+      marginRight: "0.25em",
+    },
+    ".cm-rendered-task-checkbox input[type='checkbox']": {
+      appearance: "none",
+      width: "1em",
+      height: "1em",
+      borderRadius: "3px",
+      border: "1.5px solid hsl(var(--border-strong))",
+      backgroundColor: "transparent",
+      cursor: "pointer",
+      margin: "0",
+      position: "relative",
+      top: "0.1em",
+    },
+    ".cm-rendered-task-checkbox input[type='checkbox']:checked": {
+      borderColor: "hsl(var(--accent))",
+      backgroundColor: "hsl(var(--accent))",
+    },
+    ".cm-rendered-task-checkbox input[type='checkbox']:checked::after": {
+      content: '""',
+      position: "absolute",
+      left: "0.22em",
+      top: "0.02em",
+      width: "0.3em",
+      height: "0.55em",
+      border: "solid hsl(var(--fg-on-accent))",
+      borderWidth: "0 0.15em 0.15em 0",
+      transform: "rotate(45deg)",
+    },
+    // GFM table rendered as an HTML `<table>` widget off-cursor. Cursor
+    // inside the table shows raw markdown for editing. Horizontal margin
+    // mirrors the inset of code blocks so tables don't touch the editor
+    // column edge.
+    ".cm-rendered-table-widget": {
+      display: "block",
+      marginLeft: "1.5rem",
+      marginRight: "1.5rem",
+      marginTop: "0.5em",
+      marginBottom: "0.5em",
+      maxWidth: "calc(100% - 3rem)",
+      borderCollapse: "collapse",
+      fontSize: "0.95em",
+      overflow: "auto",
+    },
+    ".cm-rendered-table-widget th, .cm-rendered-table-widget td": {
+      border: "1px solid hsl(var(--border-subtle))",
+      padding: "0.4em 0.75em",
+      textAlign: "left",
+      verticalAlign: "top",
+    },
+    ".cm-rendered-table-widget th": {
+      backgroundColor: "hsl(var(--bg-elevated))",
+      fontWeight: "600",
+      color: "hsl(var(--fg-primary))",
+    },
+    ".cm-rendered-table-widget td": {
+      color: "hsl(var(--fg-primary))",
+    },
+    ".cm-rendered-table-widget tr:nth-child(even) td": {
+      backgroundColor: "hsl(var(--bg-surface))",
+    },
+    // Rendered image widget. The actual `<img>` loads via the asset
+    // protocol for local paths; on load failure the widget swaps in a
+    // textual fallback and picks up `.cm-rendered-image-error`.
+    ".cm-rendered-image": {
+      display: "inline-block",
+      verticalAlign: "middle",
+      maxWidth: "100%",
+    },
+    ".cm-rendered-image img": {
+      display: "block",
+      maxWidth: "100%",
+      maxHeight: "420px",
+      height: "auto",
+      borderRadius: "4px",
+      backgroundColor: "hsl(var(--bg-elevated))",
+    },
+    ".cm-rendered-image-error": {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "0.35em",
+      padding: "0.1em 0.5em",
+      borderRadius: "4px",
+      backgroundColor: "hsl(var(--bg-elevated))",
+      border: "1px solid hsl(var(--border-subtle))",
+      fontSize: "0.9em",
+      color: "hsl(var(--fg-muted))",
+    },
   },
   { dark: true },
 );

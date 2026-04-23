@@ -94,6 +94,7 @@ Cairn/
   docs/
     DESIGN.md                  ← visual identity, tokens, components
     ARCHITECTURE.md            ← system architecture, IPC, invariants
+    EDITOR.md                  ← markdown editor reference (features, live-preview, how to extend)
   src/                         ← React frontend
     ds/                        ← design-system primitives
     shell/                     ← AppShell, Sidebar, etc.
@@ -120,5 +121,6 @@ Cairn/
 
 - **Add a new frontend → backend call:** declare it in `commands.rs`, register it in `lib.rs`'s `invoke_handler`, add a typed wrapper in `src/lib/invoke.ts`, document it in `docs/ARCHITECTURE.md` § "IPC contract", and write tests on both sides.
 - **Add a new color or shadow:** put it in `tokens.css` + `tailwind.config.ts` + `docs/DESIGN.md`. Do not add it in a component.
+- **Touch anything in `src/editor/`:** read `docs/EDITOR.md` first. New markdown constructs, live-preview decorations, theme classes, and interaction handlers all have a documented place in that file — update it in the same PR if architecture changes.
 - **Touch anything in `.cairn/`:** stop and check that you're going through the `vault`/`fs` modules. Ad-hoc writes into `.cairn/` are a bug.
 - **Write a bug fix:** write the failing test first, then the fix.

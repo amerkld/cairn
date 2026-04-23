@@ -203,16 +203,25 @@ Skeletons, not spinners. Animated shimmer is off-limits; prefer a static placeho
 - Save indicator in bottom-right (subtle; appears briefly on save)
 - Title and body share a single column whose width is driven by `--editor-max-width`. The "Full-width editor" preference (Settings dialog → Editor section) flips the token between `48rem` (centered readable column) and `100%` (edge-to-edge). The switch preserves undo history — it toggles the token, not the CodeMirror instance.
 
-**Live-preview classes** (defined in `src/editor/editor-theme.ts`, applied by `live-preview.ts`):
+**Live-preview classes** (defined in `src/editor/editor-theme.ts`, applied by the live-preview plugin at `src/editor/live-preview/`). Full feature matrix and architecture live in [docs/EDITOR.md](./EDITOR.md); this table is the token-level view.
 
-| Class                      | Applied to      | Purpose                                              |
-|----------------------------|-----------------|------------------------------------------------------|
-| `cm-heading cm-heading-1…6`| Heading line    | Heading size + weight (see Typography scale)         |
-| `cm-rendered-bold`         | Range over `**…**` | `font-weight: 600`                                |
-| `cm-rendered-italic`       | Range over `*…*`| `font-style: italic`                                 |
-| `cm-rendered-code`         | Inner text of `` `…` ``| Monospace + `bg-elevated` background          |
-| `cm-rendered-code-block`   | Each line of a fenced/indented code block | Monospace, `bg-elevated` background that reads as a continuous block |
-| `cm-rendered-hr`           | Thematic-break line | `::after` draws a 1px `border-subtle` rule; the `---` text is hidden on non-cursor lines |
+| Class                          | Applied to                               | Purpose                                              |
+|--------------------------------|------------------------------------------|------------------------------------------------------|
+| `cm-heading cm-heading-1…6`    | Heading line                             | Heading size + weight (see Typography scale)         |
+| `cm-rendered-bold`             | Range over `**…**`                       | `font-weight: 600`                                   |
+| `cm-rendered-italic`           | Range over `*…*`                         | `font-style: italic`                                 |
+| `cm-rendered-code`             | Inner text of `` `…` ``                  | Monospace + `bg-elevated` background                 |
+| `cm-rendered-code-block`       | Each line of a fenced/indented code block| Monospace, `bg-elevated`, reads as a continuous block|
+| `cm-rendered-hr`               | Thematic-break line                      | `::after` draws a 1px `border-subtle` rule; dashes hidden off-cursor |
+| `cm-rendered-blockquote`       | Each line of a blockquote                | Left `border-strong`, `fg-secondary` italic          |
+| `cm-rendered-list-item`        | Each line of a list item                 | Layout hook for the per-item line                    |
+| `cm-rendered-list-marker`      | The `-` / `*` / `1.` marker              | `accent` colour, stays visible                       |
+| `cm-rendered-link`             | Visible text of a link or autolink URL   | `accent` colour, subtle underline                    |
+| `cm-rendered-image`            | Widget replacing `![alt](url)` off-cursor| Wraps an `<img>` loaded via Tauri's asset protocol   |
+| `cm-rendered-image-error`      | Applied to `cm-rendered-image` when the image fails to load | Falls back to a `bg-elevated` chip showing the alt text |
+| `cm-rendered-strikethrough`    | Range over `~~…~~`                       | `line-through`, `fg-muted`                           |
+| `cm-rendered-task-checkbox`    | Widget replacing `[ ]` / `[x]` off-cursor| Clickable checkbox, `accent` when checked            |
+| `cm-rendered-table-widget`     | Widget replacing a whole GFM table off-cursor | HTML `<table>` with bordered cells, bolded `<th>` row, zebra rows |
 
 ### Someday / Trash
 - Simple list view with per-row actions (Remind / Restore / Delete)

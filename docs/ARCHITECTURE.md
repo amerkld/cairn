@@ -239,11 +239,9 @@ Frontend subscribes to these in `src/lib/tauri-events.ts` and invalidates the co
 
 ## Editor (live-preview)
 
-The note editor in `src/editor/` is a CodeMirror 6 wrapper whose defining extension is `live-preview.ts`. The extension decorates the markdown syntax tree so that, on any line that does not currently hold the cursor, syntax markers (`#`, `**`, `_`, `` ` ``, fenced-code fences, `---`) are hidden and the line renders formatted; on the cursor's line the raw text is shown so editing stays plain-markdown rather than WYSIWYG. Constructs handled: ATX headings 1–6, bold, italic, inline code, fenced and indented code blocks, thematic breaks.
+The note editor in `src/editor/` is a CodeMirror 6 wrapper. Its defining extension is the live-preview system at `src/editor/live-preview/`, a `ViewPlugin` that decorates the markdown syntax tree so off-cursor lines render formatted while the raw text stays exactly what the user typed. The grammar is GFM-enabled (tables, task lists, strikethrough, autolinks).
 
-Decorations are collected into an unsorted array and handed to `Decoration.set(ranges, /* sort */ true)` instead of a hand-ordered `RangeSetBuilder`. The builder rejects out-of-order additions, and certain well-formed trees (a heading containing inline emphasis; nested emphasis) naturally produce such sequences when line and mark decorations are emitted from the same walk. The walk itself is wrapped in a `try/catch` that keeps the previous decoration set on error rather than clearing the view.
-
-The builder is exported as a pure function over `(EditorState, visibleRanges)` so it can be unit-tested without an `EditorView` (jsdom lacks the layout primitives a real view needs).
+For the full feature matrix, architecture, interaction rules, token usage, and how to add a new construct, see [docs/EDITOR.md](./EDITOR.md).
 
 ## Frontend state conventions
 
