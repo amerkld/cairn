@@ -125,6 +125,18 @@ export type MoveTarget = "captures" | "someday" | (string & {});
 export interface Preferences {
   /** Tauri accelerator string for the Quick Capture global shortcut, e.g. `CommandOrControl+Shift+N`. */
   quickCaptureShortcut: string;
+  /**
+   * When `true`, closing the main window hides it and keeps Cairn alive in
+   * the system tray (preserving the Quick Capture global shortcut). When
+   * `false`, closing the main window exits the app.
+   */
+  closeToTray: boolean;
+  /**
+   * Sticky flag: has the user already seen the one-time "Cairn is still
+   * running in the system tray" notification? Surfaced so a future settings
+   * reset can re-show the hint.
+   */
+  trayHintShown: boolean;
 }
 
 /**
@@ -221,6 +233,14 @@ export const api = {
   getPreferences: () => call<Preferences>("get_preferences"),
   setQuickCaptureShortcut: (accelerator: string) =>
     call<void>("set_quick_capture_shortcut", { accelerator }),
+  setCloseToTray: (enabled: boolean) =>
+    call<void>("set_close_to_tray", { enabled }),
+  setTrayHintShown: () => call<void>("set_tray_hint_shown"),
+  recordProjectVisit: (path: string) =>
+    call<void>("record_project_visit", { path }),
+  listRecentProjects: (limit: number) =>
+    call<Project[]>("list_recent_projects", { limit }),
+  quitApp: () => call<void>("quit_app"),
   showQuickCapture: () => call<void>("show_quick_capture"),
   hideQuickCapture: () => call<void>("hide_quick_capture"),
   focusMainWindow: () => call<void>("focus_main_window"),

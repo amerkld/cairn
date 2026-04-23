@@ -155,6 +155,10 @@ Cairn draws its own title bar; OS decorations are disabled cross-platform (`deco
 
 The drag region is set in `src/index.css` via `-webkit-app-region`; buttons inside `.app-title-bar` automatically opt out.
 
+### System tray menu
+
+The tray icon uses the bundled app icon (`src-tauri/icons/icon.ico`); no new asset is introduced. The right-click menu is deliberately native-OS-styled — Windows 11 and macOS don't let applications theme tray menus, and a custom popup's cost (focus handling, multi-monitor positioning, accessibility) isn't worth the brand win for a tertiary surface. The menu stays terse ("Open Cairn", "Captures", "Recent Projects" section, "Quit Cairn") to blend with every other tray-resident app the user has running.
+
 ### Cards
 
 Rounded-lg, 1px `border-subtle`, `bg-surface`. Hover feedback only if the card is interactive; otherwise cards are static containers.

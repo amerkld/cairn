@@ -5,7 +5,6 @@
 //! apply across vaults — anything that is about the user's relationship
 //! with Cairn itself rather than any single vault.
 //!
-//! Currently just the configurable global shortcut for Quick Capture.
 //! Writes are atomic (tmp-file + rename) so a crash mid-write can't leave
 //! the file half-updated.
 
@@ -21,21 +20,37 @@ const PREFERENCES_FILE: &str = "preferences.json";
 /// capture" shortcut which only fires when Cairn has focus.
 pub const DEFAULT_QUICK_CAPTURE_SHORTCUT: &str = "CommandOrControl+Shift+N";
 
+/// Close-to-tray defaults on. Closing the main window hides it and keeps the
+/// app alive in the system tray so the Quick Capture global shortcut remains
+/// available. Users can switch to the legacy "close exits" behaviour in
+/// Settings.
+pub const DEFAULT_CLOSE_TO_TRAY: bool = true;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PreferencesFile {
     #[serde(default = "default_shortcut")]
     quick_capture_shortcut: String,
+    #[serde(default = "default_close_to_tray")]
+    close_to_tray: bool,
+    #[serde(default)]
+    tray_hint_shown: bool,
 }
 
 fn default_shortcut() -> String {
     DEFAULT_QUICK_CAPTURE_SHORTCUT.to_string()
 }
 
+fn default_close_to_tray() -> bool {
+    DEFAULT_CLOSE_TO_TRAY
+}
+
 impl Default for PreferencesFile {
     fn default() -> Self {
         Self {
             quick_capture_shortcut: default_shortcut(),
+            close_to_tray: default_close_to_tray(),
+            tray_hint_shown: false,
         }
     }
 }
@@ -46,6 +61,8 @@ impl Default for PreferencesFile {
 pub struct Preferences {
     data_dir: PathBuf,
     quick_capture_shortcut: String,
+    close_to_tray: bool,
+    tray_hint_shown: bool,
 }
 
 impl Preferences {
@@ -64,11 +81,25 @@ impl Preferences {
         Ok(Self {
             data_dir: data_dir.to_path_buf(),
             quick_capture_shortcut: file.quick_capture_shortcut,
+            close_to_tray: file.close_to_tray,
+            tray_hint_shown: file.tray_hint_shown,
         })
     }
 
     pub fn quick_capture_shortcut(&self) -> &str {
         &self.quick_capture_shortcut
+    }
+
+    /// Whether closing the main window hides it (tray keeps app alive) or
+    /// exits the whole process.
+    pub fn close_to_tray(&self) -> bool {
+        self.close_to_tray
+    }
+
+    /// Whether the first-close "Cairn is still running in the tray" hint has
+    /// already been shown to the user.
+    pub fn tray_hint_shown(&self) -> bool {
+        self.tray_hint_shown
     }
 
     /// Persist a new Quick Capture shortcut. Caller is responsible for
@@ -79,9 +110,26 @@ impl Preferences {
         self.save()
     }
 
+    /// Persist a new close-to-tray preference.
+    pub fn set_close_to_tray(&mut self, enabled: bool) -> AppResult<()> {
+        self.close_to_tray = enabled;
+        self.save()
+    }
+
+    /// Mark the one-time tray hint as shown so it doesn't fire on every close.
+    pub fn set_tray_hint_shown(&mut self) -> AppResult<()> {
+        if self.tray_hint_shown {
+            return Ok(());
+        }
+        self.tray_hint_shown = true;
+        self.save()
+    }
+
     fn save(&self) -> AppResult<()> {
         let file = PreferencesFile {
             quick_capture_shortcut: self.quick_capture_shortcut.clone(),
+            close_to_tray: self.close_to_tray,
+            tray_hint_shown: self.tray_hint_shown,
         };
         let bytes = serde_json::to_vec_pretty(&file)?;
         let target = self.data_dir.join(PREFERENCES_FILE);
@@ -95,12 +143,16 @@ impl Preferences {
 #[serde(rename_all = "camelCase")]
 pub struct PreferencesSnapshot {
     pub quick_capture_shortcut: String,
+    pub close_to_tray: bool,
+    pub tray_hint_shown: bool,
 }
 
 impl From<&Preferences> for PreferencesSnapshot {
     fn from(p: &Preferences) -> Self {
         Self {
             quick_capture_shortcut: p.quick_capture_shortcut.clone(),
+            close_to_tray: p.close_to_tray,
+            tray_hint_shown: p.tray_hint_shown,
         }
     }
 }
@@ -122,6 +174,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let prefs = Preferences::load(dir.path()).unwrap();
         assert_eq!(prefs.quick_capture_shortcut(), DEFAULT_QUICK_CAPTURE_SHORTCUT);
+        assert!(prefs.close_to_tray());
+        assert!(!prefs.tray_hint_shown());
     }
 
     #[test]
@@ -143,6 +197,7 @@ mod tests {
         fs::write(dir.path().join(PREFERENCES_FILE), b"not json at all").unwrap();
         let prefs = Preferences::load(dir.path()).unwrap();
         assert_eq!(prefs.quick_capture_shortcut(), DEFAULT_QUICK_CAPTURE_SHORTCUT);
+        assert!(prefs.close_to_tray());
     }
 
     #[test]
@@ -151,6 +206,49 @@ mod tests {
         fs::write(dir.path().join(PREFERENCES_FILE), b"{}").unwrap();
         let prefs = Preferences::load(dir.path()).unwrap();
         assert_eq!(prefs.quick_capture_shortcut(), DEFAULT_QUICK_CAPTURE_SHORTCUT);
+        assert!(prefs.close_to_tray());
+        assert!(!prefs.tray_hint_shown());
+    }
+
+    #[test]
+    fn legacy_file_with_only_shortcut_keeps_new_defaults() {
+        // Files written before close-to-tray existed must keep the sensible
+        // defaults rather than silently landing in some third state.
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join(PREFERENCES_FILE),
+            br#"{"quickCaptureShortcut":"CommandOrControl+Alt+K"}"#,
+        )
+        .unwrap();
+        let prefs = Preferences::load(dir.path()).unwrap();
+        assert_eq!(prefs.quick_capture_shortcut(), "CommandOrControl+Alt+K");
+        assert!(prefs.close_to_tray());
+        assert!(!prefs.tray_hint_shown());
+    }
+
+    #[test]
+    fn set_close_to_tray_persists_across_reload() {
+        let dir = TempDir::new().unwrap();
+        {
+            let mut prefs = Preferences::load(dir.path()).unwrap();
+            prefs.set_close_to_tray(false).unwrap();
+        }
+        let reloaded = Preferences::load(dir.path()).unwrap();
+        assert!(!reloaded.close_to_tray());
+    }
+
+    #[test]
+    fn set_tray_hint_shown_is_sticky() {
+        let dir = TempDir::new().unwrap();
+        {
+            let mut prefs = Preferences::load(dir.path()).unwrap();
+            assert!(!prefs.tray_hint_shown());
+            prefs.set_tray_hint_shown().unwrap();
+            // Calling twice must not error or re-save needlessly.
+            prefs.set_tray_hint_shown().unwrap();
+        }
+        let reloaded = Preferences::load(dir.path()).unwrap();
+        assert!(reloaded.tray_hint_shown());
     }
 
     #[test]
@@ -173,6 +271,14 @@ mod tests {
         let json = serde_json::to_string(&snap).unwrap();
         assert!(
             json.contains("\"quickCaptureShortcut\""),
+            "expected camelCase serde rename, got: {json}",
+        );
+        assert!(
+            json.contains("\"closeToTray\""),
+            "expected camelCase serde rename, got: {json}",
+        );
+        assert!(
+            json.contains("\"trayHintShown\""),
             "expected camelCase serde rename, got: {json}",
         );
     }

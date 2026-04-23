@@ -6,7 +6,7 @@
 //! adaptation.
 
 use crate::error::{AppError, AppResult};
-use crate::fs::{self, FolderContents, NoteRef, Tree};
+use crate::fs::{self, FolderContents, NoteRef, Project, Tree};
 use crate::md::ParsedNote;
 use crate::preferences::PreferencesSnapshot;
 use crate::reminders::{self, Entry as ReminderEntry};
@@ -14,6 +14,7 @@ use crate::search::{self, SearchHit};
 use crate::state as vault_state;
 use crate::tags::{self, TagInfo};
 use crate::trash::{self, Entry as TrashEntry};
+use crate::tray;
 use crate::vault::{self, CAPTURES_DIR, SOMEDAY_DIR, VaultSummary};
 use crate::watcher;
 use crate::{show_quick_capture_window, AppState, QUICK_CAPTURE_WINDOW};
@@ -89,10 +90,13 @@ pub fn switch_vault(
 }
 
 #[tauri::command]
-pub fn close_active_vault(state: State<'_, AppState>) -> AppResult<()> {
+pub fn close_active_vault(app: AppHandle, state: State<'_, AppState>) -> AppResult<()> {
     state.registry.write().clear_active()?;
     *state.watcher.lock() = None;
     *state.reminders.lock() = None;
+    if let Err(e) = tray::refresh_tray_menu(&app) {
+        eprintln!("failed to refresh tray menu after close: {e}");
+    }
     Ok(())
 }
 
@@ -325,6 +329,7 @@ pub fn create_project(state: State<'_, AppState>, name: String) -> AppResult<Pat
 /// for the file watcher.
 #[tauri::command]
 pub fn rename_project(
+    app: AppHandle,
     state: State<'_, AppState>,
     old_path: String,
     new_name: String,
@@ -335,6 +340,9 @@ pub fn rename_project(
     if let Some(scheduler) = state.reminders.lock().as_ref() {
         scheduler.rebuild()?;
     }
+    if let Err(e) = tray::refresh_tray_menu(&app) {
+        eprintln!("failed to refresh tray menu after rename: {e}");
+    }
     Ok(new_path)
 }
 
@@ -342,11 +350,18 @@ pub fn rename_project(
 /// single entry and purges any reminder/action-order references pointing
 /// inside the project. Restore is available from the Trash page.
 #[tauri::command]
-pub fn delete_project(state: State<'_, AppState>, path: String) -> AppResult<()> {
+pub fn delete_project(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+) -> AppResult<()> {
     let root = active_vault_path(&state)?;
     fs::soft_delete_project(&root, &PathBuf::from(path))?;
     if let Some(scheduler) = state.reminders.lock().as_ref() {
         scheduler.rebuild()?;
+    }
+    if let Err(e) = tray::refresh_tray_menu(&app) {
+        eprintln!("failed to refresh tray menu after delete: {e}");
     }
     Ok(())
 }
@@ -508,6 +523,83 @@ pub fn focus_main_window(app: AppHandle) -> AppResult<()> {
     Ok(())
 }
 
+/// Persist the close-to-tray preference. When `enabled`, the main window's
+/// close button hides rather than exits; when `false`, closing exits the
+/// whole app (pre-tray behavior).
+#[tauri::command]
+pub fn set_close_to_tray(state: State<'_, AppState>, enabled: bool) -> AppResult<()> {
+    state.preferences.write().set_close_to_tray(enabled)
+}
+
+/// Mark the first-time tray hint as shown so the one-shot notification
+/// never fires again. Normally invoked from Rust itself after showing the
+/// notification; exposed to the frontend as well so a settings reset or
+/// diagnostics UI can flip it without backend changes.
+#[tauri::command]
+pub fn set_tray_hint_shown(state: State<'_, AppState>) -> AppResult<()> {
+    state.preferences.write().set_tray_hint_shown()
+}
+
+/// Record that the user has navigated to the given project, promoting it to
+/// the top of the active vault's recency list. Also rebuilds the tray menu
+/// so the "Recent Projects" entries reflect the new order immediately.
+#[tauri::command]
+pub fn record_project_visit(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+) -> AppResult<()> {
+    let root = active_vault_path(&state)?;
+    vault_state::record_project_visit(&root, &path)?;
+    if let Err(e) = tray::refresh_tray_menu(&app) {
+        eprintln!("failed to refresh tray menu after visit: {e}");
+    }
+    Ok(())
+}
+
+/// Return the top-N most-recently-opened projects for the active vault,
+/// hydrated into full `Project` entries so the UI can render labels,
+/// action counts, etc. Excludes any recorded paths whose folders no longer
+/// exist on disk.
+#[tauri::command]
+pub fn list_recent_projects(
+    state: State<'_, AppState>,
+    limit: usize,
+) -> AppResult<Vec<Project>> {
+    let root = active_vault_path(&state)?;
+    let visits = vault_state::recent_projects(&root, limit)?;
+    if visits.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Hydrate via the vault tree so the UI gets the same `Project` shape
+    // as elsewhere (name, actions, subdirectories). Pre-index by absolute
+    // path so we can preserve the recency order of the visits list.
+    let tree = fs::list_tree(&root)?;
+    let mut by_path: std::collections::HashMap<String, Project> = tree
+        .projects
+        .into_iter()
+        .map(|p| (p.path.to_string_lossy().to_string(), p))
+        .collect();
+
+    let mut out = Vec::with_capacity(visits.len());
+    for v in visits {
+        if let Some(p) = by_path.remove(&v.path) {
+            out.push(p);
+        }
+    }
+    Ok(out)
+}
+
+/// Shut the app down. Used by the tray menu's "Quit Cairn" item when it
+/// needs to flow through the frontend (e.g. keyboard shortcut triggered
+/// in-app); the tray-native Quit path calls `app.exit(0)` directly from Rust.
+#[tauri::command]
+pub fn quit_app(app: AppHandle) -> AppResult<()> {
+    app.exit(0);
+    Ok(())
+}
+
 // ─── editor preferences ─────────────────────────────────────────────────
 
 /// Read the active vault's editor-full-width preference. Returns `false`
@@ -563,5 +655,10 @@ fn replace_watcher(app: &AppHandle, state: &State<'_, AppState>, root: PathBuf) 
     if let Ok(r) = reminders::start(app.clone(), root) {
         let _ = r.rebuild();
         *state.reminders.lock() = Some(r);
+    }
+    // Tray "Recent Projects" is per-active-vault, so rebuild the menu
+    // whenever the active vault changes.
+    if let Err(e) = tray::refresh_tray_menu(app) {
+        eprintln!("failed to refresh tray menu after vault switch: {e}");
     }
 }

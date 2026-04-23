@@ -22,6 +22,15 @@ export interface ReminderDuePayload {
   remindAt: string;
 }
 
+/**
+ * Payload of the `tray:navigate` event emitted by the Rust tray handler
+ * when a menu item should deep-link the main window. The shape mirrors
+ * `tray::TrayNavigate` (tagged union with `target`).
+ */
+export type TrayNavigatePayload =
+  | { target: "captures" }
+  | { target: "project"; path: string };
+
 export function useVaultEventSubscriptions(): void {
   const qc = useQueryClient();
   useEffect(() => {
@@ -97,4 +106,31 @@ export function useReminderToasts(): {
   }
 
   return { toasts, dismiss };
+}
+
+/**
+ * Subscribe to the Rust-emitted `tray:navigate` event. The tray handler has
+ * already shown + focused the main window by the time this fires; the
+ * handler passed in just needs to route.
+ *
+ * The handler should be memoized (e.g. via `useCallback`) to avoid
+ * re-subscribing on every render.
+ */
+export function useTrayNavigate(handler: (payload: TrayNavigatePayload) => void): void {
+  useEffect(() => {
+    let active = true;
+    let cleanup: (() => void) | undefined;
+
+    listen<TrayNavigatePayload>("tray:navigate", (event) => {
+      handler(event.payload);
+    }).then((unlisten) => {
+      if (active) cleanup = unlisten;
+      else unlisten();
+    });
+
+    return () => {
+      active = false;
+      cleanup?.();
+    };
+  }, [handler]);
 }
