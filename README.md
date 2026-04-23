@@ -8,7 +8,7 @@
 
 ---
 
-I built Cairn to cover a gap I had with my Obsidian setup that I just couldn't achieve with plugins no matter how hard I tried. I wanted a neat way to capture my thoughts on the fly while working, go through and expand on them in a simple way, and finally organize my knowledge across all projects in an LLM-friendly way. Earlier this year, I picked up a copy of David Allen's Getting Things Done and took a few principles and put a twist on them in a way that works for me. This new structure dramatically increased my productivity towards the latter half of 2025, and Cairn implements that system natively. I already use it daily, and if it helps one person get a step closer to their goals then it'll have fulfilled its purpose.
+> I built Cairn to cover a gap I had with my Obsidian setup that I just couldn't achieve with plugins no matter how hard I tried. I wanted a neat way to capture my thoughts on the fly while working, go through > and expand on them in a simple way, and finally organize my knowledge across all projects in an LLM-friendly way. Earlier this year, I picked up a copy of David Allen's Getting Things Done and took a few > principles and put a twist on them in a way that works for me. This new structure dramatically increased my productivity towards the latter half of 2025, and Cairn implements that system natively. I already > use it daily, and if it helps one person get a step closer to their goals then it'll have fulfilled its purpose.
 
 ## Watch it in action
 
