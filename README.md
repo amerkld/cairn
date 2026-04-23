@@ -15,15 +15,11 @@ I built Cairn to cover a gap I had with my Obsidian setup that I just couldn't a
 The quick-capture flow. A global shortcut, a floating dialog, a note on disk.
 
 <div align="center">
-  <video
-    src="https://github.com/amerkld/cairn/raw/main/docs/assets/capture-flow.mp4"
-    controls
-    muted
-    playsinline
-    width="720">
-    Your browser doesn't render inline video.
-    <a href="docs/assets/capture-flow.mp4">Download the demo (MP4)</a>.
-  </video>
+  <div>
+    <a href="https://www.loom.com/share/764378b747914153a76edf5e057592bf">
+      <img style="max-width:1200px;" src="https://cdn.loom.com/sessions/thumbnails/764378b747914153a76edf5e057592bf-7c6ce0e89fa1b5b0-full-play.gif#t=0.1">
+    </a>
+  </div>
 </div>
 
 ## What Cairn is
