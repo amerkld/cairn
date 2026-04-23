@@ -61,7 +61,7 @@ export function Captures() {
         }
         isCreating={createCapture.isPending}
       />
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-10 pb-4">
+      <div className="flex w-full flex-col gap-4 px-10 pb-4">
         <TagFilter selected={tagFilter} onSelect={setTagFilter} />
       </div>
       <div className="min-h-0 flex-1 overflow-auto px-10 pb-10">
@@ -111,7 +111,7 @@ function Header({
   isCreating: boolean;
 }) {
   return (
-    <header className="mx-auto flex w-full max-w-6xl items-end justify-between gap-4 px-10 pb-6 pt-10">
+    <header className="flex w-full items-end justify-between gap-4 px-10 pb-6 pt-10">
       <div className="flex flex-col gap-1">
         <div className="text-2xs uppercase tracking-wider text-fg-muted">Inbox</div>
         <div className="flex items-baseline gap-3">
@@ -268,7 +268,7 @@ function FilteredEmpty({
 
 function LoadingGrid() {
   return (
-    <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {Array.from({ length: 6 }).map((_, i) => (
         <div
           key={i}

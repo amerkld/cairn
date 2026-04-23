@@ -25,7 +25,7 @@ export function TrashPage() {
   const entries = trashQuery.data ?? [];
 
   return (
-    <div className="mx-auto flex h-full max-w-4xl flex-col gap-8 overflow-auto px-10 py-10">
+    <div className="flex h-full flex-col gap-8 overflow-auto px-10 py-10">
       <header className="flex items-end justify-between gap-4">
         <div>
           <div className="text-2xs uppercase tracking-wider text-fg-muted">

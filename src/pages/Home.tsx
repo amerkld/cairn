@@ -85,7 +85,7 @@ export function Home() {
   const grouped = useMemo(() => groupByProject(activeActions), [activeActions]);
 
   return (
-    <div className="mx-auto flex h-full max-w-5xl flex-col gap-8 px-10 py-10">
+    <div className="flex h-full flex-col gap-8 px-10 py-10">
       <Header />
       {actionsQuery.isLoading ? (
         <LoadingRows />
