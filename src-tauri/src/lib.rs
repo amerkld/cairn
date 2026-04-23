@@ -17,6 +17,7 @@ pub mod search;
 pub mod state;
 pub mod tags;
 pub mod trash;
+pub mod tray;
 pub mod vault;
 pub mod watcher;
 
@@ -26,6 +27,7 @@ use parking_lot::{Mutex, RwLock};
 use reminders::SchedulerHandle;
 use tauri::{Emitter, Manager, Monitor, PhysicalPosition, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri_plugin_notification::NotificationExt;
 use watcher::WatcherHandle;
 
 /// Label of the floating Quick Capture window declared in `tauri.conf.json`.
@@ -137,12 +139,66 @@ fn any_cairn_window_focused(app: &tauri::AppHandle) -> bool {
     false
 }
 
+/// Surface the main window: unhide, unminimize, focus. Used by both the
+/// single-instance plugin (second launch attempt) and the tray menu's
+/// "Open Cairn" / project shortcuts.
+pub fn surface_main_window(app: &tauri::AppHandle) {
+    let Some(w) = app.get_webview_window("main") else {
+        return;
+    };
+    let _ = w.show();
+    let _ = w.unminimize();
+    let _ = w.set_focus();
+}
+
+/// Show a one-time OS notification the first time the user closes the main
+/// window into the tray, so the window "disappearing" isn't mysterious.
+/// Persists a sticky `trayHintShown` flag so it never fires twice. Failures
+/// to show (notification plugin disabled, OS denied permission) are logged
+/// and otherwise swallowed — the app is still functioning.
+fn show_tray_hint_once(app: &tauri::AppHandle) {
+    let already_shown = app
+        .state::<AppState>()
+        .preferences
+        .read()
+        .tray_hint_shown();
+    if already_shown {
+        return;
+    }
+
+    if let Err(e) = app
+        .notification()
+        .builder()
+        .title("Cairn is still running")
+        .body("Right-click the tray icon to quit.")
+        .show()
+    {
+        eprintln!("failed to show tray hint notification: {e}");
+    }
+
+    if let Err(e) = app
+        .state::<AppState>()
+        .preferences
+        .write()
+        .set_tray_hint_shown()
+    {
+        eprintln!("failed to persist tray hint flag: {e}");
+    }
+}
+
 /// Build and run the Tauri application.
 ///
 /// Kept as a library entry so integration tests can construct a builder
 /// against a mock runtime without going through `main`.
 pub fn run() {
     tauri::Builder::default()
+        // Single-instance FIRST so a second launch attempt while the main
+        // window is hidden in tray surfaces the existing window instead of
+        // spawning a duplicate process (and a second tray icon, and a
+        // double-registered global shortcut).
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            surface_main_window(app);
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
@@ -196,6 +252,34 @@ pub fn run() {
                     }
                 });
             }
+
+            // Close-to-tray: when the pref is on, the main window X button
+            // hides rather than exits, keeping the Quick Capture global
+            // shortcut alive. Pref is read at fire time so a Settings toggle
+            // takes effect without a restart.
+            if let Some(main) = app.get_webview_window("main") {
+                let main_for_event = main.clone();
+                let handle_for_event = app.app_handle().clone();
+                main.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        let should_hide = handle_for_event
+                            .state::<AppState>()
+                            .preferences
+                            .read()
+                            .close_to_tray();
+                        if !should_hide {
+                            return;
+                        }
+                        api.prevent_close();
+                        let _ = main_for_event.hide();
+                        show_tray_hint_once(&handle_for_event);
+                    }
+                });
+            }
+
+            // Build the system tray icon + menu. Errors are logged inside
+            // `build_tray`; we never fail startup over tray setup.
+            tray::build_tray(&app.app_handle().clone());
 
             // Register the configured Quick Capture shortcut. A failure here
             // (bad accelerator saved in prefs, OS already claiming the combo)
@@ -267,6 +351,11 @@ pub fn run() {
             commands::search_notes,
             commands::get_preferences,
             commands::set_quick_capture_shortcut,
+            commands::set_close_to_tray,
+            commands::set_tray_hint_shown,
+            commands::record_project_visit,
+            commands::list_recent_projects,
+            commands::quit_app,
             commands::show_quick_capture,
             commands::hide_quick_capture,
             commands::focus_main_window,

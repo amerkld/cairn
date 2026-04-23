@@ -383,6 +383,16 @@ export function useSetQuickCaptureShortcut() {
   });
 }
 
+export function useSetCloseToTray() {
+  const qc = useQueryClient();
+  return useMutation<void, unknown, boolean>({
+    mutationFn: (enabled) => api.setCloseToTray(enabled),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.preferences });
+    },
+  });
+}
+
 export function useCompleteAction() {
   const qc = useQueryClient();
   return useMutation<string, unknown, { path: string; note?: string }>({

@@ -251,9 +251,10 @@ pub fn rename_project(
 }
 
 /// Soft-delete a project folder by moving the whole tree into `.cairn/trash/`
-/// as a single entry. Also purges any reminder-index or action-order entries
-/// that pointed into the project so the scheduler and Home dashboard don't
-/// try to surface actions that now live under `.cairn/trash/`.
+/// as a single entry. Also purges any reminder-index, action-order, or
+/// project-recency entries that pointed into the project so the scheduler,
+/// Home dashboard, and tray menu don't try to surface actions that now live
+/// under `.cairn/trash/`.
 ///
 /// On restore (via `trash::restore`), a reminder rebuild re-scans the notes
 /// and picks up their `remind_at` frontmatter again automatically.
@@ -275,7 +276,13 @@ pub fn soft_delete_project(vault_root: &Path, path: &Path) -> AppResult<()> {
     let mut state = crate::state::load(vault_root)?;
     let before_state = state.action_order.len();
     state.action_order.retain(|p| !Path::new(p).starts_with(path));
-    if state.action_order.len() != before_state {
+    let before_recency = state.project_recency.len();
+    state
+        .project_recency
+        .retain(|v| !Path::new(&v.path).starts_with(path));
+    if state.action_order.len() != before_state
+        || state.project_recency.len() != before_recency
+    {
         crate::state::save(vault_root, &state)?;
     }
 
@@ -309,6 +316,23 @@ fn rewrite_project_path_prefix(
         let as_path = Path::new(stored);
         if let Ok(suffix) = as_path.strip_prefix(old_path) {
             *stored = new_path.join(suffix).to_string_lossy().to_string();
+            state_dirty = true;
+        }
+    }
+    for visit in state.project_recency.iter_mut() {
+        let as_path = Path::new(&visit.path);
+        if let Ok(suffix) = as_path.strip_prefix(old_path) {
+            // When the stored path is the project root itself, `suffix` is
+            // empty and `new_path.join("")` can produce a trailing separator
+            // on Windows. Use `new_path` directly in that case so the
+            // round-tripped string matches `to_string_lossy()` of the new
+            // project path exactly.
+            let rewritten = if suffix.as_os_str().is_empty() {
+                new_path.to_path_buf()
+            } else {
+                new_path.join(suffix)
+            };
+            visit.path = rewritten.to_string_lossy().to_string();
             state_dirty = true;
         }
     }
@@ -1219,6 +1243,53 @@ mod tests {
         assert_eq!(
             reloaded.action_order[1],
             unrelated.to_string_lossy().to_string(),
+        );
+    }
+
+    #[test]
+    fn rename_project_rewrites_project_recency_paths() {
+        let (_vault, root) = setup_vault();
+        let project = create_project(&root, "Alpha").unwrap();
+        // Seed the recency list with the project and one unrelated path, so
+        // we can verify the rename only rewrites the matching entry.
+        let other = create_project(&root, "Other").unwrap();
+        crate::state::record_project_visit(&root, &project.to_string_lossy()).unwrap();
+        crate::state::record_project_visit(&root, &other.to_string_lossy()).unwrap();
+
+        let new_project = rename_project(&root, &project, "Beta").unwrap();
+
+        let reloaded = crate::state::load(&root).unwrap();
+        assert_eq!(reloaded.project_recency.len(), 2);
+        // The renamed project retains its position — visit order is preserved —
+        // but now points at the new path.
+        let entry = reloaded
+            .project_recency
+            .iter()
+            .find(|v| v.path == new_project.to_string_lossy())
+            .expect("renamed project should still be in recency with new path");
+        assert_eq!(entry.path, new_project.to_string_lossy());
+        // The unrelated entry is untouched.
+        assert!(reloaded
+            .project_recency
+            .iter()
+            .any(|v| v.path == other.to_string_lossy()));
+    }
+
+    #[test]
+    fn soft_delete_project_purges_project_recency_for_project() {
+        let (_vault, root) = setup_vault();
+        let project = create_project(&root, "Alpha").unwrap();
+        let unrelated = create_project(&root, "Beta").unwrap();
+        crate::state::record_project_visit(&root, &project.to_string_lossy()).unwrap();
+        crate::state::record_project_visit(&root, &unrelated.to_string_lossy()).unwrap();
+
+        soft_delete_project(&root, &project).unwrap();
+
+        let reloaded = crate::state::load(&root).unwrap();
+        assert_eq!(reloaded.project_recency.len(), 1);
+        assert_eq!(
+            reloaded.project_recency[0].path,
+            unrelated.to_string_lossy(),
         );
     }
 

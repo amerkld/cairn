@@ -35,8 +35,13 @@ function renderDialog(
     if (cmd === "get_editor_full_width") return false;
     if (cmd === "set_editor_full_width") return null;
     if (cmd === "get_preferences")
-      return { quickCaptureShortcut: "CommandOrControl+Shift+N" };
+      return {
+        quickCaptureShortcut: "CommandOrControl+Shift+N",
+        closeToTray: true,
+        trayHintShown: false,
+      };
     if (cmd === "set_quick_capture_shortcut") return null;
+    if (cmd === "set_close_to_tray") return null;
     throw new Error(`unexpected IPC: ${cmd}`);
   };
   mockIPC((cmd, args) => (ipc ?? defaults)(cmd, args as Record<string, unknown>));
@@ -114,8 +119,13 @@ describe("SettingsDialog", () => {
       if (cmd === "get_editor_full_width") return true;
       if (cmd === "set_editor_full_width") return null;
       if (cmd === "get_preferences")
-        return { quickCaptureShortcut: "CommandOrControl+Shift+N" };
+        return {
+          quickCaptureShortcut: "CommandOrControl+Shift+N",
+          closeToTray: true,
+          trayHintShown: false,
+        };
       if (cmd === "set_quick_capture_shortcut") return null;
+      if (cmd === "set_close_to_tray") return null;
       throw new Error(`unexpected: ${cmd}`);
     });
 
@@ -130,8 +140,13 @@ describe("SettingsDialog", () => {
       if (cmd === "get_editor_full_width") return false;
       if (cmd === "set_editor_full_width") return null;
       if (cmd === "get_preferences")
-        return { quickCaptureShortcut: "CommandOrControl+Shift+N" };
+        return {
+          quickCaptureShortcut: "CommandOrControl+Shift+N",
+          closeToTray: true,
+          trayHintShown: false,
+        };
       if (cmd === "set_quick_capture_shortcut") return null;
+      if (cmd === "set_close_to_tray") return null;
       throw new Error(`unexpected: ${cmd}`);
     });
 
@@ -154,8 +169,13 @@ describe("SettingsDialog", () => {
       if (cmd === "get_editor_full_width") return false;
       if (cmd === "set_editor_full_width") return null;
       if (cmd === "get_preferences")
-        return { quickCaptureShortcut: "CommandOrControl+Shift+N" };
+        return {
+          quickCaptureShortcut: "CommandOrControl+Shift+N",
+          closeToTray: true,
+          trayHintShown: false,
+        };
       if (cmd === "set_quick_capture_shortcut") return null;
+      if (cmd === "set_close_to_tray") return null;
       // tauri-plugin-opener invokes `plugin:opener|open_url` under the hood.
       if (cmd === "plugin:opener|open_url") {
         openCalls.push({ cmd, args });
@@ -187,8 +207,13 @@ describe("SettingsDialog", () => {
       if (cmd === "get_editor_full_width") return false;
       if (cmd === "set_editor_full_width") return null;
       if (cmd === "get_preferences")
-        return { quickCaptureShortcut: "CommandOrControl+Shift+N" };
+        return {
+          quickCaptureShortcut: "CommandOrControl+Shift+N",
+          closeToTray: true,
+          trayHintShown: false,
+        };
       if (cmd === "set_quick_capture_shortcut") return null;
+      if (cmd === "set_close_to_tray") return null;
       throw new Error(`unexpected: ${cmd}`);
     });
 
@@ -220,8 +245,13 @@ describe("SettingsDialog", () => {
       if (cmd === "get_editor_full_width") return false;
       if (cmd === "set_editor_full_width") return null;
       if (cmd === "get_preferences")
-        return { quickCaptureShortcut: "CommandOrControl+Shift+N" };
+        return {
+          quickCaptureShortcut: "CommandOrControl+Shift+N",
+          closeToTray: true,
+          trayHintShown: false,
+        };
       if (cmd === "set_quick_capture_shortcut") return null;
+      if (cmd === "set_close_to_tray") return null;
       throw new Error(`unexpected: ${cmd}`);
     });
 
@@ -236,6 +266,59 @@ describe("SettingsDialog", () => {
       const set = calls.find((c) => c.cmd === "set_quick_capture_shortcut");
       expect(set).toBeDefined();
       expect(set?.args).toMatchObject({ accelerator: "CommandOrControl+Shift+J" });
+    });
+  });
+
+  it("renders the close-to-tray switch reflecting the saved preference", async () => {
+    renderDialog({}, (cmd) => {
+      if (cmd === "get_editor_full_width") return false;
+      if (cmd === "set_editor_full_width") return null;
+      if (cmd === "get_preferences")
+        return {
+          quickCaptureShortcut: "CommandOrControl+Shift+N",
+          closeToTray: false,
+          trayHintShown: true,
+        };
+      if (cmd === "set_quick_capture_shortcut") return null;
+      if (cmd === "set_close_to_tray") return null;
+      throw new Error(`unexpected: ${cmd}`);
+    });
+
+    const toggle = await screen.findByRole("switch", {
+      name: "Close to system tray",
+    });
+    await waitFor(() =>
+      expect(toggle).toHaveAttribute("aria-checked", "false"),
+    );
+  });
+
+  it("toggling close-to-tray calls set_close_to_tray with the new value", async () => {
+    const calls: Array<{ cmd: string; args: Record<string, unknown> }> = [];
+    renderDialog({}, (cmd, args) => {
+      calls.push({ cmd, args });
+      if (cmd === "get_editor_full_width") return false;
+      if (cmd === "set_editor_full_width") return null;
+      if (cmd === "get_preferences")
+        return {
+          quickCaptureShortcut: "CommandOrControl+Shift+N",
+          closeToTray: true,
+          trayHintShown: false,
+        };
+      if (cmd === "set_quick_capture_shortcut") return null;
+      if (cmd === "set_close_to_tray") return null;
+      throw new Error(`unexpected: ${cmd}`);
+    });
+
+    const toggle = await screen.findByRole("switch", {
+      name: "Close to system tray",
+    });
+    await waitFor(() => expect(toggle).not.toBeDisabled());
+    await userEvent.setup().click(toggle);
+
+    await waitFor(() => {
+      const setCall = calls.find((c) => c.cmd === "set_close_to_tray");
+      expect(setCall).toBeDefined();
+      expect(setCall?.args).toEqual({ enabled: false });
     });
   });
 

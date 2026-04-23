@@ -26,6 +26,7 @@ import {
 } from "@/lib/invoke";
 import {
   usePreferencesQuery,
+  useSetCloseToTray,
   useSetQuickCaptureShortcut,
 } from "@/lib/queries";
 import { CairnLogo } from "./CairnLogo";
@@ -65,6 +66,10 @@ export function SettingsDialog({
           <Section title="Vault">
             <Row label="Name" value={vault.name} />
             <Row label="Path" value={vault.path} copyable mono />
+          </Section>
+
+          <Section title="General">
+            <CloseToTrayRow />
           </Section>
 
           <Section title="Editor">
@@ -176,6 +181,36 @@ function AuthorRow() {
         />
       </button>
     </div>
+  );
+}
+
+function CloseToTrayRow() {
+  const prefs = usePreferencesQuery();
+  const setCloseToTray = useSetCloseToTray();
+  // Default to `true` before the query resolves so the toggle reflects the
+  // shipping default instead of momentarily reading as "off".
+  const checked = prefs.data?.closeToTray ?? true;
+  const loading = prefs.isLoading || setCloseToTray.isPending;
+
+  return (
+    <SettingRow
+      label="Close to system tray"
+      description="Closing the window keeps Cairn running in the tray so Quick Capture stays available. Off: closing exits the app."
+      control={
+        <Switch
+          aria-label="Close to system tray"
+          checked={checked}
+          disabled={loading}
+          onCheckedChange={(next) => {
+            // Fire-and-forget: the query cache invalidates on success; any
+            // error is surfaced through the mutation's own state. There's no
+            // optimistic UI here because the toggle is cheap and the refetch
+            // lands almost immediately.
+            setCloseToTray.mutate(next);
+          }}
+        />
+      }
+    />
   );
 }
 

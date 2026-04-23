@@ -78,6 +78,7 @@ These are stated in `docs/ARCHITECTURE.md` and are non-negotiable:
 3. `.cairn/` is app-owned; everything outside it is the user's. Anything a user-facing command writes outside `.cairn/` is a user-inspectable markdown file or asset.
 4. Unknown frontmatter keys are preserved verbatim on write.
 5. Deletion moves the file into `.cairn/trash/` and appends a trash-index entry. Hard deletion happens only on explicit "Empty Trash".
+6. The main window's close button is a UI signal, not a process exit. When `preferences.closeToTray == true` (default), close hides the window and Quick Capture's global shortcut stays alive. Process exit happens only on explicit tray Quit, the `quit_app` IPC, or close while `closeToTray == false`.
 
 ## When to update documentation
 

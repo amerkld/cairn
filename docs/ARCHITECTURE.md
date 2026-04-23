@@ -56,6 +56,39 @@ The floating window is opened by a system-wide global shortcut (default `Command
 
 On close requests (Cmd/Ctrl+W, X button), the setup hook intercepts the event and hides the window instead so the shortcut stays live.
 
+## System tray & close-to-tray
+
+With the `tray-icon` feature enabled on the `tauri` crate, `src-tauri/src/tray/mod.rs` installs a tray icon during setup. Right-click opens a native OS menu; left-click toggles the main window show/hide.
+
+The menu is built at tray creation and rebuilt whenever the active vault changes (inside `replace_watcher`), after `record_project_visit` (inside the command), and after project rename/delete (both of which also rewrite `projectRecency` paths in `.cairn/state.json`).
+
+```
+Menu layout
+───────────
+Open Cairn
+─────────
+Captures
+─────────
+Recent Projects   ← disabled header; replaced by "No recent projects"
+  <project 1>       when no vault is active or recency list is empty
+  <project 2>
+  <project 3>
+─────────
+Quit Cairn
+```
+
+Project menu items use opaque IDs `tray:project:<idx>` that are resolved back to absolute paths via a side table kept in `TrayMenuState` — absolute Windows paths contain characters (colons, backslashes) we'd rather not encode round-trip through OS menu ids.
+
+**Close-to-tray invariant.** The main window's close button signals UI intent, not process exit. Process exit happens on exactly two paths: (1) explicit Quit from the tray menu (or the `quit_app` IPC command), or (2) window close while `preferences.closeToTray == false`. When `closeToTray == true`, the main-window `CloseRequested` handler calls `api.prevent_close()` + `window.hide()` — the same pattern used for the Quick Capture window. This keeps the Quick Capture global shortcut alive, which is the whole point.
+
+A one-time notification ("Cairn is still running — right-click the tray icon to quit.") fires the first time the user closes into the tray, gated by the sticky `trayHintShown` flag in `preferences.json`.
+
+**Single instance.** `tauri-plugin-single-instance` is registered first so a second launch attempt while the main window is hidden surfaces the existing window instead of spawning a duplicate process (which would create a second tray icon and fail to register the global shortcut).
+
+**Navigation from tray.** Menu clicks that target a route emit `tray:navigate` events (`{ target: "captures" }` or `{ target: "project", path }`). The frontend listens in `src/lib/tauri-events.ts::useTrayNavigate` and routes via `setState` in `AppShell`.
+
+**Project recency.** Driven by the frontend: `AppShell` fires `record_project_visit(path)` fire-and-forget in a `useEffect` keyed on the project route. Backed by `state::project_recency` in `.cairn/state.json`, capped at `PROJECT_RECENCY_CAP` (8), with the top 3 surfaced to the tray.
+
 ## Module boundaries
 
 Each module is a compilation unit with a single responsibility and a narrow public surface.
@@ -74,6 +107,7 @@ Each module is a compilation unit with a single responsibility and a narrow publ
 | `trash`       | Soft-delete via mirror tree in `.cairn/trash/`; index at `.cairn/trash-index.json`; restore with collision rename; empty-trash | `error`, `vault`, `md` |
 | `search`      | Case-insensitive substring scan over titles + bodies; ranks title > body > match density; skips `.cairn/` | `error`, `vault`, `md` |
 | `reminders`   | `remind_at` scanner, index at `.cairn/reminders.json`, Tokio poll-loop scheduler, OS notifications + `reminder_due` event | `md`, `fs`, `vault` |
+| `tray`        | System tray icon + native menu, left-click window toggle, `tray:navigate` event emission, `refresh_tray_menu` on recency/vault changes | `state`, `AppState` |
 | `search` *(M8)*| Bounded walk + case-insensitive substring scan             | `fs`       |
 | `commands`    | `#[tauri::command]` IPC adapters — pure translation layer  | all of the above |
 
@@ -100,6 +134,8 @@ Rule: a module may not import a module from a column to its right without explic
 ```
 
 `config.json` carries vault metadata (`name`), tag color definitions (`tags`), and per-vault UI preferences (`editorFullWidth`). New preference keys append here — the field is read via `#[serde(default)]` so configs written before a field existed still deserialize without rewriting on load.
+
+`state.json` holds per-vault transient state kept out of the notes themselves: `actionOrder` (cross-project Home drag order) and `projectRecency` (last-opened timestamps that drive the tray's Recent Projects menu, capped at `PROJECT_RECENCY_CAP`). Same `#[serde(default)]` forward-compatibility rule applies.
 
 **Invariants** (enforced by `vault::` and `fs::`, never bypassed):
 
@@ -152,8 +188,13 @@ Commands are declared in `src-tauri/src/commands.rs` and proxied from the fronte
 | `search_notes`    | `{ query, limit? }`     | `SearchHit[]`            | substring search over titles + bodies |
 | `get_editor_full_width` | —                 | `boolean`                | reads `editorFullWidth` from the active vault's `.cairn/config.json`; `false` on legacy configs missing the field |
 | `set_editor_full_width` | `{ value: bool }` | `void`                   | persists the editor layout preference into the active vault's config |
-| `get_preferences` | —                       | `Preferences`            | returns user-level preferences (currently `{ quickCaptureShortcut }`) |
+| `get_preferences` | —                       | `Preferences`            | returns user-level preferences (`{ quickCaptureShortcut, closeToTray, trayHintShown }`) |
 | `set_quick_capture_shortcut` | `{ accelerator }` | `void`               | validates + registers the new accelerator, unregisters the old, persists to `preferences.json`. `AppError::Shortcut` on failure leaves the previous binding live |
+| `set_close_to_tray` | `{ enabled: bool }`   | `void`                   | persists the close-to-tray preference; takes effect on the next main-window close (pref is re-read at fire time) |
+| `set_tray_hint_shown` | —                   | `void`                   | marks the one-time tray hint as shown (sticky). Normally invoked from Rust after the notification fires |
+| `record_project_visit` | `{ path }`         | `void`                   | upserts the project into the active vault's recency list and rebuilds the tray menu |
+| `list_recent_projects` | `{ limit: number }` | `Project[]`             | top-N hydrated project entries for the active vault; excludes paths whose folders no longer exist |
+| `quit_app`        | —                       | `void`                   | `app.exit(0)` — used by UI paths that need a full exit; the tray's native "Quit" item calls `app.exit(0)` directly from Rust |
 | `show_quick_capture` | —                    | `void`                   | shows + focuses the Quick Capture window and emits `quick-capture:open` |
 | `hide_quick_capture` | —                    | `void`                   | hides (not closes) the Quick Capture window |
 | `focus_main_window` | —                     | `void`                   | brings the main window to the foreground (used by QC's no-vault empty state) |
@@ -170,6 +211,7 @@ Commands are declared in `src-tauri/src/commands.rs` and proxied from the fronte
 | `vault.changed` | `{ paths: string[] }`       | `fs` watcher, debounced 150ms |
 | `reminder_due` | `{ path, title, remindAt }` | `reminders` scheduler |
 | `quick-capture:open` | —                       | `lib.rs` on global-shortcut press / `show_quick_capture` command |
+| `tray:navigate` | `{ target: "captures" } \| { target: "project", path }` | `tray` menu handler after surfacing the main window |
 
 ### In-app shortcuts (DOM keydown — main window only)
 
