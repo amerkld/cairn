@@ -75,6 +75,53 @@ const cairnTheme = EditorView.theme(
       borderRadius: "3px",
       color: "hsl(var(--fg-primary))",
     },
+    // Fenced and indented code blocks. Each line in the block is tagged
+    // with `.cm-rendered-code-block`; the first and last lines also carry
+    // a `-first` / `-last` class so the theme can draw rounded top/bottom
+    // corners without needing a wrapping element (CM6 renders each line
+    // as its own block). Padding and margins are narrower than the
+    // default `.cm-line` rule so the block sits visually inset inside the
+    // surrounding text column — in full-width mode this keeps the code
+    // from reaching the window edges.
+    ".cm-rendered-code-block": {
+      fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+      fontSize: "0.9em",
+      backgroundColor: "hsl(var(--bg-elevated))",
+      color: "hsl(var(--fg-primary))",
+      paddingLeft: "1rem",
+      paddingRight: "1rem",
+      marginLeft: "1rem",
+      marginRight: "1rem",
+      borderLeft: "1px solid hsl(var(--border-subtle))",
+      borderRight: "1px solid hsl(var(--border-subtle))",
+    },
+    ".cm-rendered-code-block-first": {
+      borderTop: "1px solid hsl(var(--border-subtle))",
+      borderTopLeftRadius: "6px",
+      borderTopRightRadius: "6px",
+      paddingTop: "0.25rem",
+      marginTop: "0.25rem",
+    },
+    ".cm-rendered-code-block-last": {
+      borderBottom: "1px solid hsl(var(--border-subtle))",
+      borderBottomLeftRadius: "6px",
+      borderBottomRightRadius: "6px",
+      paddingBottom: "0.25rem",
+      marginBottom: "0.25rem",
+    },
+    // Thematic break (`---`, `***`, `___`). The content is hidden off-cursor;
+    // a pseudo-element draws the rule so the line stays visible.
+    ".cm-rendered-hr": {
+      position: "relative",
+    },
+    ".cm-rendered-hr::after": {
+      content: '""',
+      position: "absolute",
+      left: "1.5rem",
+      right: "1.5rem",
+      top: "50%",
+      borderTop: "1px solid hsl(var(--border-subtle))",
+    },
   },
   { dark: true },
 );

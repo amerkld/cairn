@@ -199,6 +199,17 @@ Skeletons, not spinners. Animated shimmer is off-limits; prefer a static placeho
 - Save indicator in bottom-right (subtle; appears briefly on save)
 - Title and body share a single column whose width is driven by `--editor-max-width`. The "Full-width editor" preference (Settings dialog → Editor section) flips the token between `48rem` (centered readable column) and `100%` (edge-to-edge). The switch preserves undo history — it toggles the token, not the CodeMirror instance.
 
+**Live-preview classes** (defined in `src/editor/editor-theme.ts`, applied by `live-preview.ts`):
+
+| Class                      | Applied to      | Purpose                                              |
+|----------------------------|-----------------|------------------------------------------------------|
+| `cm-heading cm-heading-1…6`| Heading line    | Heading size + weight (see Typography scale)         |
+| `cm-rendered-bold`         | Range over `**…**` | `font-weight: 600`                                |
+| `cm-rendered-italic`       | Range over `*…*`| `font-style: italic`                                 |
+| `cm-rendered-code`         | Inner text of `` `…` ``| Monospace + `bg-elevated` background          |
+| `cm-rendered-code-block`   | Each line of a fenced/indented code block | Monospace, `bg-elevated` background that reads as a continuous block |
+| `cm-rendered-hr`           | Thematic-break line | `::after` draws a 1px `border-subtle` rule; the `---` text is hidden on non-cursor lines |
+
 ### Someday / Trash
 - Simple list view with per-row actions (Remind / Restore / Delete)
 
