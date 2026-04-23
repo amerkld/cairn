@@ -10,6 +10,7 @@ import { EditorState } from "@codemirror/state";
 import type { DecorationSet } from "@codemirror/view";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { buildDecorations } from "./live-preview";
+import { classesAt, summarize } from "./live-preview/summarize";
 
 function decorate(doc: string, cursorPos: number): DecorationSet {
   const state = EditorState.create({
@@ -27,39 +28,6 @@ function decorateWithAtomic(doc: string, cursorPos: number) {
     extensions: [markdown({ base: markdownLanguage })],
   });
   return buildDecorations(state, [{ from: 0, to: doc.length }]);
-}
-
-interface DecoSummary {
-  from: number;
-  to: number;
-  class: string | undefined;
-  replace: boolean;
-  line: boolean;
-}
-
-function summarize(set: DecorationSet, docLength: number): DecoSummary[] {
-  const out: DecoSummary[] = [];
-  set.between(0, docLength, (from, to, value) => {
-    const spec = value.spec as {
-      class?: string;
-      widget?: unknown;
-    };
-    out.push({
-      from,
-      to,
-      class: spec.class,
-      // Replace decorations are created via Decoration.replace({}), which
-      // leaves spec without a class. Line decorations also have no widget
-      // but do have a class and from === to.
-      replace: spec.class === undefined,
-      line: from === to,
-    });
-  });
-  return out;
-}
-
-function classesAt(summary: DecoSummary[], from: number): string[] {
-  return summary.filter((d) => d.from === from && d.class).map((d) => d.class!);
 }
 
 describe("live-preview buildDecorations", () => {

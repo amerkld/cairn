@@ -140,6 +140,7 @@ export function EditorPage({ notePath, returnTo }: EditorPageProps) {
             <Editor
               initialBody={body}
               resetKey={resetKey}
+              notePath={notePath}
               onChange={(next) => {
                 setBody(next);
                 setDirty(true);
