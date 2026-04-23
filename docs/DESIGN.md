@@ -94,6 +94,8 @@ Avoid radius larger than 14px; Cairn is crisp, not bubbly.
 |-----------------------|-----------|-----------------------------------------------------------|
 | `--editor-max-width`  | `48rem`   | Max width of the editor column (body + frontmatter title). Set to `100%` when `data-editor-width="full"` is on `:root`, flipped by the "Full-width editor" setting. |
 
+**Page frames.** Top-level list pages (Home, Captures, Someday, Trash, Project) span the full width between the sidebar and the window edge, separated only by a `px-10 py-10` gutter — no `max-w-*` on the page wrapper. The editor is the only page that constrains its column width, via `--editor-max-width`. Small empty-state / not-found blocks inside these pages may still use `max-w-md` for a narrow centered column — that's a content treatment, not a page frame.
+
 ## Elevation
 
 Shadows are subtle. The hierarchy is mostly conveyed through border + background contrast; shadows are reserved for overlays.

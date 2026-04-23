@@ -79,7 +79,7 @@ export function ProjectPage({ projectPath }: ProjectPageProps) {
   }
 
   return (
-    <div className="mx-auto flex h-full max-w-4xl flex-col gap-10 overflow-auto px-10 py-10">
+    <div className="flex h-full flex-col gap-10 overflow-auto px-10 py-10">
       <header className="flex items-end justify-between gap-4">
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex items-center gap-2 text-2xs uppercase tracking-wider text-fg-muted">
@@ -656,7 +656,7 @@ function DocsLoading() {
 
 function LoadingSkeleton() {
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-4 px-10 py-10">
+    <div className="flex flex-col gap-4 px-10 py-10">
       <div className="h-8 w-48 animate-pulse rounded bg-bg-elevated" />
       <div className="mt-6 flex flex-col gap-2">
         {[0, 1, 2].map((i) => (
